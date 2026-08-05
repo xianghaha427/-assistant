@@ -1,0 +1,139 @@
+# FinPilot - 行业洞察助手 DSL
+# 用途：行业分析、市场趋势洞察、金融数据解读
+# 类型：Chatflow（对话型工作流）
+# 工作流：开始 → LLM → 结束
+# 导入方式：Dify 工作室 → 创建应用 → 导入 DSL 文件
+app:
+  description: >-
+    FinPilot 行业洞察助手，专为金融从业者提供行业分析、市场趋势洞察和投资观点解读服务。
+  icon: "📈"
+  icon_background: '#FFF4E5'
+  mode: advanced-chat
+  name: 行业洞察助手
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.3.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions: []
+      allowed_file_types: []
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: false
+      number_limits: 3
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+          - local_file
+          - remote_url
+    opening_statement: 您好！我是 FinPilot 行业洞察助手，可以为您提供行业分析、市场趋势洞察和投资观点解读。请问您关注哪个行业或市场动态？
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - 当前金融科技行业有哪些主要趋势？
+      - 如何看待当前的利率环境对资管行业的影响？
+      - 新能源行业最新的市场动态是什么？
+    suggested_questions_after_answer:
+      enabled: true
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+      - data:
+          isInIteration: false
+          sourceType: start
+          targetType: llm
+        id: edge-start-to-llm
+        source: node-start
+        sourceHandle: source
+        target: node-llm
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceType: llm
+          targetType: end
+        id: edge-llm-to-end
+        source: node-llm
+        sourceHandle: source
+        target: node-end
+        targetHandle: target
+        type: custom
+    nodes:
+      - data:
+          desc: 用户输入入口
+          title: 开始
+          type: start
+          variables: []
+        height: 54
+        id: node-start
+        position:
+          x: 80
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          context:
+            enabled: false
+          desc: 提供行业分析与市场洞察
+          model:
+            completion_params:
+              temperature: 0.5
+              top_p: 0.9
+              max_tokens: 4096
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          prompt_template:
+            - id: system-prompt
+              role: system
+              text: >-
+                你是 FinPilot 行业洞察助手，专为金融从业者提供行业分析、市场趋势洞察和投资观点解读服务。请基于最新可获取的信息，提供专业、客观的分析。分析要有数据支撑，观点要明确，风险提示要到位。
+            - id: user-prompt
+              role: user
+              text: "{{#sys.query#}}"
+          selected_features: []
+          title: LLM
+          type: llm
+          vision:
+            enabled: false
+        height: 98
+        id: node-llm
+        position:
+          x: 384
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          desc: 输出分析结果
+          outputs:
+            - value_selector:
+                - node-llm
+                - text
+              variable: text
+          title: 结束
+          type: end
+        height: 90
+        id: node-end
+        position:
+          x: 688
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244

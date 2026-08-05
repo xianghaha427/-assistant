@@ -1,0 +1,20 @@
+# Backend
+smart-office-backend/target/
+smart-office-backend/*.iml
+smart-office-backend/.idea/
+
+# Frontend
+smart-office-frontend/node_modules/
+smart-office-frontend/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Uploads
+smart-office-backend/uploads/

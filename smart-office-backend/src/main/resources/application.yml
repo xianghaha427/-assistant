@@ -1,0 +1,58 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: smart-office-backend
+  datasource:
+    url: jdbc:mysql://localhost:3306/smart_office?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: "123456"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      encoding: UTF-8
+  jackson:
+    # 实体驼峰字段统一以 snake_case 输出，与前端字段约定保持一致
+    property-naming-strategy: SNAKE_CASE
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+sa-token:
+  token-name: Authorization
+  timeout: 86400
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-read-cookie: false
+  is-read-header: true
+  token-prefix: Bearer
+
+# Dify 集成配置
+dify:
+  enabled: true
+  base-url: http://localhost/v1
+  api-key: ""
+
+# DeepSeek 直连兜底配置（Dify 不可用时降级使用）
+deepseek:
+  api-key: ""
+  base-url: https://api.deepseek.com
+  model: deepseek-chat
+  enabled: true
+
+dingtalk:
+  enabled: false
+  webhook-url: ""
+  secret: ""
