@@ -28,6 +28,8 @@ public class KnowledgeService {
 
     private final AgentConfigMapper agentConfigMapper;
     private final DifyService difyService;
+    /** 阶段1知识问答双通道路由（native 自研引擎优先，失败回落 Dify） */
+    private final com.finoffice.service.kb.KnowledgeEngineRouter knowledgeEngineRouter;
 
     @Value("${dify.base-url:}")
     private String difyBaseUrl;
@@ -44,6 +46,12 @@ public class KnowledgeService {
     public KnowledgeAnswer searchInKnowledge(Long userId, String query) {
         if (query == null || query.isBlank()) {
             throw new BizException("查询内容不能为空");
+        }
+
+        // 阶段1双通道：agent#1 engine=native 时优先自研引擎；未启用/异常时 Router 返回 null，自动回落下方 Dify 链路
+        KnowledgeAnswer nativeAnswer = knowledgeEngineRouter.tryNative(userId, query);
+        if (nativeAnswer != null) {
+            return nativeAnswer;
         }
 
         AgentConfig agent;

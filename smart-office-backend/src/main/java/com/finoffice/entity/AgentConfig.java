@@ -22,6 +22,8 @@ public class AgentConfig {
     /** workflow 型应用的输入变量名（如 meeting_text/topic） */
     private String inputVariable;
     private String systemPrompt;
+    /** 知识问答引擎通道：native=自研LangChain4j引擎 / dify=Dify云端（默认dify，阶段1双通道） */
+    private String engine;
     private String toolsJson;
     private Integer enabled;
     private LocalDateTime createTime;

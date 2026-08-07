@@ -26,6 +26,7 @@
           <div class="qa-bubble">
             <div class="qa-content">{{ item.content }}</div>
             <div v-if="item.source === 'mock'" class="qa-source-tag">演示文案（Dify 服务暂不可用）</div>
+            <div v-else-if="item.source === 'native'" class="qa-source-tag qa-source-native">由 FinPilot 自研引擎回答（数据不出域）</div>
             <div v-else-if="item.role === 'assistant'" class="qa-source-tag qa-source-dify">由 Dify 企业知识问答助手回答</div>
           </div>
         </div>
@@ -169,6 +170,9 @@ async function handleSearch() {
   color: var(--text-tertiary);
 }
 .qa-source-dify {
+  color: var(--accent);
+}
+.qa-source-native {
   color: var(--accent);
 }
 

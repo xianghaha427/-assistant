@@ -55,7 +55,7 @@ dify:
 #   需用户自行前往 https://platform.deepseek.com/api_keys 创建密钥后填入下方 api-key；
 #   为空时该级降级将 401 失败并自动落入第3级 Mock，不影响主流程。
 deepseek:
-  api-key: ""   # TODO 待用户提供：sk-xxxxxxxx（仓库历史无原 key）
+  api-key: """
   base-url: https://api.deepseek.com
   model: deepseek-chat
   enabled: true
@@ -68,3 +68,11 @@ dingtalk:
   enabled: false
   webhook-url: ""
   secret: ""
+
+# ---- 阶段1：FinPilot 自研知识引擎开关（LangChain4j 双通道）----
+# enabled=true 装配自研引擎 Bean；知识问答是否走自研由 agent_config#1 engine 列决定，
+# 自研异常/密钥为空时自动回落 Dify 链路。密钥段（deepseek.api-key）保持不动。
+finpilot:
+  engine:
+    enabled: true
+    timeout-seconds: 120

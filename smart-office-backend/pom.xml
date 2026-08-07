@@ -21,7 +21,22 @@
         <java.version>17</java.version>
         <sa-token.version>1.37.0</sa-token.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <!-- LangChain4j 正式 GA 版本（阶段1自研知识引擎，勿用 beta） -->
+        <langchain4j.version>1.13.0</langchain4j.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- LangChain4j BOM：阶段1自研知识引擎模块统一版本管理 -->
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>${langchain4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -73,6 +88,16 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+
+        <!-- LangChain4j：阶段1自研知识问答引擎（OpenAI 兼容协议直连 DeepSeek，不用 spring-boot-starter） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
         </dependency>
 
         <dependency>

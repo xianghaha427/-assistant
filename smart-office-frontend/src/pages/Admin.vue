@@ -123,6 +123,23 @@
           />
         </div>
       </el-tab-pane>
+
+      <!-- 智能体引擎（阶段1：知识问答双通道切换） -->
+      <el-tab-pane label="智能体引擎" name="engine">
+        <div v-loading="engineLoading" class="engine-panel">
+          <div class="engine-title">企业知识问答助手 · 回答引擎</div>
+          <div class="engine-desc">
+            自研引擎：平台内置大模型直连回答、数据不出域；Dify 引擎：走云端智能体链路。自研引擎异常时自动回落 Dify。
+          </div>
+          <el-radio-group v-model="engineValue" class="engine-radio">
+            <el-radio value="native">自研引擎（native）</el-radio>
+            <el-radio value="dify">Dify（dify）</el-radio>
+          </el-radio-group>
+          <div class="engine-actions">
+            <el-button type="primary" :loading="engineSaving" @click="handleSaveEngine">保存</el-button>
+          </div>
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 用户创建/编辑弹窗 -->
@@ -173,7 +190,7 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
-import { getUsers, createUser, updateUser, deleteUser, getRoles, getLogs } from '../api'
+import { getUsers, createUser, updateUser, deleteUser, getRoles, getLogs, getAgents, updateAgent } from '../api'
 
 const activeTab = ref('users')
 
@@ -230,6 +247,7 @@ watch(activeTab, (tab) => {
   if (tab === 'users') loadUsers()
   else if (tab === 'roles') loadRoles()
   else if (tab === 'logs') loadLogs()
+  else if (tab === 'engine') loadEngine()
 })
 
 async function loadUsers() {
@@ -340,6 +358,32 @@ async function handleDeleteUser(row) {
   ElMessage.success('已删除')
   await loadUsers()
 }
+
+// 智能体引擎（阶段1：知识问答双通道，读写 agent_config#1 的 engine 列）
+const engineLoading = ref(false)
+const engineSaving = ref(false)
+const engineValue = ref('dify')
+
+async function loadEngine() {
+  engineLoading.value = true
+  try {
+    const list = await getAgents() || []
+    const kbAgent = list.find((a) => a.id === 1)
+    engineValue.value = kbAgent?.engine || 'dify'
+  } finally {
+    engineLoading.value = false
+  }
+}
+
+async function handleSaveEngine() {
+  engineSaving.value = true
+  try {
+    await updateAgent(1, { engine: engineValue.value })
+    ElMessage.success('引擎配置已保存')
+  } finally {
+    engineSaving.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -438,5 +482,33 @@ async function handleDeleteUser(row) {
 .user-form :deep(.el-form-item__label) {
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.engine-panel {
+  padding: 8px 4px;
+}
+
+.engine-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.engine-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.engine-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.engine-actions {
+  margin-top: 4px;
 }
 </style>

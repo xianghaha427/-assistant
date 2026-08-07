@@ -140,6 +140,18 @@ public class SchemaMigrationRunner implements ApplicationRunner {
                     + "UNIQUE KEY uk_date (brief_date)"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='行业简报记录'");
 
+            // ---- 阶段1：自研知识问答双通道（幂等）----
+            // agent_config 增加 engine 列（native=自研引擎 / dify=Dify，默认 dify）
+            addColumnIfMissing("agent_config", "engine",
+                    "ALTER TABLE agent_config ADD COLUMN engine VARCHAR(16) NOT NULL DEFAULT 'dify' "
+                            + "COMMENT '知识问答引擎通道:native自研/dify云端'");
+            // 知识问答助手(id=1) system_prompt 为空时回填自研引擎默认提示词（仅 NULL/空串时写入，幂等）
+            jdbcTemplate.update("UPDATE agent_config SET system_prompt = ? WHERE id = 1 "
+                    + "AND (system_prompt IS NULL OR system_prompt = '')",
+                    "你是华信证券的企业知识问答助手。请严格基于给定的上下文资料回答问题："
+                            + "资料中有明确依据时，给出简洁、专业、结构化的中文回答；"
+                            + "资料中没有依据或无法确定时，坦承说明知识库中暂无相关内容，不要编造。");
+
             log.info("SchemaMigrationRunner 迁移完成");
         } catch (Exception e) {
             log.error("Schema 迁移失败，不阻断启动: {}", e.getMessage(), e);
