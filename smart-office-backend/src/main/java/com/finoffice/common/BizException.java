@@ -38,6 +38,16 @@ public class BizException extends RuntimeException {
             return R.error(401, "未登录或登录已过期");
         }
 
+@ExceptionHandler(cn.dev33.satoken.exception.NotRoleException.class)
+        public R<Void> handleNotRole(cn.dev33.satoken.exception.NotRoleException e) {
+            return R.error(403, "无权限访问：需要角色 " + e.getRole());
+        }
+
+@ExceptionHandler(cn.dev33.satoken.exception.NotPermissionException.class)
+        public R<Void> handleNotPermission(cn.dev33.satoken.exception.NotPermissionException e) {
+            return R.error(403, "无权限执行此操作");
+        }
+
         @ExceptionHandler(Exception.class)
         public R<Void> handleOther(Exception e) {
             log.error("系统异常", e);

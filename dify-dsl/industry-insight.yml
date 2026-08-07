@@ -1,11 +1,62 @@
-# FinPilot - 行业洞察助手 DSL
-# 用途：行业分析、市场趋势洞察、金融数据解读
-# 类型：Chatflow（对话型工作流）
-# 工作流：开始 → LLM → 结束
+# =====================================================================
+# FinPilot - 行业洞察助手 DSL（ChatFlow 完整编排版）
+# 用途：金融行业深度分析问答，自动判断并生成 ECharts 可视化图表
+# 类型：Chatflow（advanced-chat 对话型工作流），目标平台 Dify 1.16.1
+# 底层模型：deepseek-chat（provider: deepseek）
+#
+# 工作流结构：
+#   开始(sys.query) → 问题分类器
+#     ├─ 类1 问候与闲聊 → 直接回复[闲聊应答]（固定文案，不调LLM）
+#     ├─ 类3 超范围问题 → 直接回复[兜底应答]（固定文案，说明能力边界）
+#     └─ 类2 行业洞察分析 → LLM[洞察分析] → 代码[报告清洗] → 条件分支1
+#           ├─ need_chart=true → LLM[图表数据提取] → 代码[图表校验与组装] → 条件分支2
+#           │     ├─ ok=true  → 直接回复[带图表]（报告+echarts代码块）
+#           │     └─ ok=false → 直接回复[无图表]（仅报告）
+#           └─ need_chart=false → 直接回复[无图表]（仅报告）
+#
+# v2.0 重构说明（针对 v1.x 三个实测问题的修复）：
+#   1. 问候语走完整分析流程 → 新增「问题分类器」节点，闲聊/超范围问题
+#      直接固定文案应答，绝不进入分析链路；
+#   2. 残缺 echarts JSON 裸露给用户 → 图表数据由代码节点做容错解析与
+#      结构校验，校验失败降级为纯文本报告，任何节点都不输出原始 JSON；
+#   3. 双 LLM 冗余无逻辑 → 合并为单一主分析节点（六段式专业骨架），
+#      图表数据提取拆为独立的轻量短节点，职责单一、成本可控。
+#
+# v2.1 修复说明（针对导入后实测「条件分支2 处 Expecting value: line 1 column 1」报错）：
+#   1. 硬化「图表校验与组装」代码节点：main 入口先做 None/空串/纯空白/非字符串
+#      防御（str(chart_text) 后再 strip），整个解析-校验-组装全流程包在
+#      try/except 中，任何异常（json.loads、类型转换、索引访问）一律降级为
+#      {"chart_md": "", "ok": false}，绝不向 Dify 运行时抛异常；
+#   2. 同样硬化「报告清洗」代码节点：输入为空/None 时返回
+#      {"report_clean": "", "need_chart": "false"}，全流程 try/except 包裹；
+#   3. 修复条件分支2 的布尔条件：原配置 varType: boolean + comparison_operator: is
+#      + value: ''，Dify 后端对布尔条件按 json.loads(value) 解析，空串直接触发
+#      "Expecting value: line 1 column 1 (char 0)"。改为 value: 'true' 后恢复正常。
+#
+# v2.2 图表排版优化说明（针对用户反馈“图表排版太挤”）：
+#   仅修改「图表校验与组装」代码节点的 ECharts option 组装逻辑（三级容错解析、
+#   字段校验、chart_md/ok 输出契约、```echarts 包裹方式均不变）：
+#   1. 统一 FinPilot 极光主题专业配色与 grid 边距，标题居中 + 副标题
+#      “数据来源：示例数据”（灰色小字）标注数据属性，动画 600ms；
+#   2. 柱状图：barMaxWidth 45 + 顶部圆角 + 数值标签，类目>4 时 X 轴标签
+#      旋转 30°，Y 轴虚线分隔且不设死上限；
+#   3. 折线图：平滑曲线 + symbolSize 8 + 区域渐变填充（opacity 0.12）；
+#   4. 饼图改环形（radius ['42%','68%']、center ['50%','55%']），外侧标签带
+#      引导线，扇区白边分隔，图例底部水平滚动；类目>5 时标签只显示百分比，
+#      类目名由图例承担。
+#
+# 设计原则（参考 Wind Alice / Bloomberg / AlphaSense 等成熟产品）：
+#   - 闲聊绝不进分析链路
+#   - 结论与图表成对交付
+#   - 无外部数据源时强制标注数据属性（【示例数据】/【行业普遍情况】）
+#   - 永不向用户裸露 JSON
+#
 # 导入方式：Dify 工作室 → 创建应用 → 导入 DSL 文件
+# =====================================================================
 app:
   description: >-
-    FinPilot 行业洞察助手，专为金融从业者提供行业分析、市场趋势洞察和投资观点解读服务。
+    FinPilot 行业洞察助手，资深金融行业分析师角色，专注宏观政策与银行/证券/保险行业动态的深度分析，
+    内置问题分类、防虚构数据约束，并可自动将对比/趋势/占比类分析渲染为 ECharts 交互图表。
   icon: "📈"
   icon_background: '#FFF4E5'
   mode: advanced-chat
@@ -31,7 +82,7 @@ workflow:
         transfer_methods:
           - local_file
           - remote_url
-    opening_statement: 您好！我是 FinPilot 行业洞察助手，可以为您提供行业分析、市场趋势洞察和投资观点解读。请问您关注哪个行业或市场动态？
+    opening_statement: 您好！我是 FinPilot 行业洞察助手，可以为您深度分析宏观政策与金融行业动态，并自动生成可视化图表。请输入您关注的行业分析问题。
     retriever_resource:
       enabled: false
     sensitive_word_avoidance:
@@ -39,9 +90,9 @@ workflow:
     speech_to_text:
       enabled: false
     suggested_questions:
-      - 当前金融科技行业有哪些主要趋势？
-      - 如何看待当前的利率环境对资管行业的影响？
-      - 新能源行业最新的市场动态是什么？
+      - 分析利率下行对银行净息差的影响
+      - 对比各大银行零售业务转型进展
+      - 当前保险市场保费收入结构占比如何？
     suggested_questions_after_answer:
       enabled: true
     text_to_speech:
@@ -50,34 +101,154 @@ workflow:
       voice: ''
   graph:
     edges:
+      # 开始 → 问题分类器
       - data:
           isInIteration: false
           sourceType: start
-          targetType: llm
-        id: edge-start-to-llm
-        source: node-start
+          targetType: question-classifier
+        id: edge-start-to-classifier
+        source: '1754500000001'
         sourceHandle: source
-        target: node-llm
+        target: '1754500000002'
         targetHandle: target
         type: custom
+      # 问题分类器 类1（问候与闲聊） → 直接回复[闲聊应答]
+      - data:
+          isInIteration: false
+          sourceHandle: '1'
+          sourceType: question-classifier
+          targetType: answer
+        id: edge-classifier-class1-to-chitchat
+        source: '1754500000002'
+        sourceHandle: '1'
+        target: '1754500000003'
+        targetHandle: target
+        type: custom
+      # 问题分类器 类3（超范围问题） → 直接回复[兜底应答]
+      - data:
+          isInIteration: false
+          sourceHandle: '3'
+          sourceType: question-classifier
+          targetType: answer
+        id: edge-classifier-class3-to-fallback
+        source: '1754500000002'
+        sourceHandle: '3'
+        target: '1754500000004'
+        targetHandle: target
+        type: custom
+      # 问题分类器 类2（行业洞察分析） → LLM[洞察分析]
+      - data:
+          isInIteration: false
+          sourceHandle: '2'
+          sourceType: question-classifier
+          targetType: llm
+        id: edge-classifier-class2-to-insight
+        source: '1754500000002'
+        sourceHandle: '2'
+        target: '1754500000005'
+        targetHandle: target
+        type: custom
+      # LLM[洞察分析] → 代码[报告清洗]
       - data:
           isInIteration: false
           sourceType: llm
-          targetType: end
-        id: edge-llm-to-end
-        source: node-llm
+          targetType: code
+        id: edge-insight-to-clean
+        source: '1754500000005'
         sourceHandle: source
-        target: node-end
+        target: '1754500000006'
+        targetHandle: target
+        type: custom
+      # 代码[报告清洗] → 条件分支1
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: if-else
+        id: edge-clean-to-branch1
+        source: '1754500000006'
+        sourceHandle: source
+        target: '1754500000007'
+        targetHandle: target
+        type: custom
+      # 条件分支1 CASE need_chart=true → LLM[图表数据提取]
+      - data:
+          isInIteration: false
+          sourceHandle: 'true'
+          sourceType: if-else
+          targetType: llm
+        id: edge-branch1-true-to-chart-llm
+        source: '1754500000007'
+        sourceHandle: 'true'
+        target: '1754500000008'
+        targetHandle: target
+        type: custom
+      # 条件分支1 ELSE → 直接回复[无图表]
+      - data:
+          isInIteration: false
+          sourceHandle: 'false'
+          sourceType: if-else
+          targetType: answer
+        id: edge-branch1-false-to-answer-nochart
+        source: '1754500000007'
+        sourceHandle: 'false'
+        target: '1754500000012'
+        targetHandle: target
+        type: custom
+      # LLM[图表数据提取] → 代码[图表校验与组装]
+      - data:
+          isInIteration: false
+          sourceType: llm
+          targetType: code
+        id: edge-chart-llm-to-assemble
+        source: '1754500000008'
+        sourceHandle: source
+        target: '1754500000009'
+        targetHandle: target
+        type: custom
+      # 代码[图表校验与组装] → 条件分支2
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: if-else
+        id: edge-assemble-to-branch2
+        source: '1754500000009'
+        sourceHandle: source
+        target: '1754500000010'
+        targetHandle: target
+        type: custom
+      # 条件分支2 CASE ok=true → 直接回复[带图表]
+      - data:
+          isInIteration: false
+          sourceHandle: 'true'
+          sourceType: if-else
+          targetType: answer
+        id: edge-branch2-true-to-answer-chart
+        source: '1754500000010'
+        sourceHandle: 'true'
+        target: '1754500000011'
+        targetHandle: target
+        type: custom
+      # 条件分支2 ELSE → 直接回复[无图表]（降级，仅报告）
+      - data:
+          isInIteration: false
+          sourceHandle: 'false'
+          sourceType: if-else
+          targetType: answer
+        id: edge-branch2-false-to-answer-nochart
+        source: '1754500000010'
+        sourceHandle: 'false'
+        target: '1754500000012'
         targetHandle: target
         type: custom
     nodes:
+      # ==================== 1. 开始（ChatFlow 不定义表单变量） ====================
       - data:
-          desc: 用户输入入口
+          desc: 用户输入入口，用户提问内容走系统变量 sys.query
           title: 开始
           type: start
           variables: []
         height: 54
-        id: node-start
+        id: '1754500000001'
         position:
           x: 80
           y: 282
@@ -85,33 +256,54 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 2. 问题分类器 ====================
       - data:
-          context:
-            enabled: false
-          desc: 提供行业分析与市场洞察
+          classes:
+            - id: '1'
+              name: 问候与闲聊
+            - id: '2'
+              name: 行业洞察分析
+            - id: '3'
+              name: 超范围问题
+          desc: 三分类路由：闲聊直接应答 / 进入分析链路 / 超范围兜底
+          instruction: |-
+            你是金融行业智能助手的问题分类器，请根据用户输入及最近对话上下文，将用户最新意图归入以下三类之一：
+
+            【类1 问候与闲聊】打招呼、感谢、告别、自我介绍、无实质问题的寒暄。
+            排除条件：只要用户话语中包含任何行业/业务分析请求，即使带有问候语，也不属于本类。
+            示例：
+            - 「你好」→ 类1
+            - 「谢谢，下次再聊」→ 类1
+
+            【类2 行业洞察分析】涉及金融、行业、政策、机构经营的分析、对比、趋势、占比类问题。包括但不限于：宏观政策（利率、降准降息、监管政策）、银行/证券/保险/基金行业动态、机构业务对比、市场结构占比、发展趋势研判。
+            示例：
+            - 「分析一下利率下行对银行净息差的影响」→ 类2
+            - 「当前保险市场保费收入结构占比如何？」→ 类2
+
+            【类3 超范围问题】与金融行业分析无关的编程、写作、生活、娱乐类问题。
+            示例：
+            - 「帮我写一段 Python 爬虫代码」→ 类3
+            - 「推荐几部周末看的电影」→ 类3
+
+            分类优先级：含明确分析诉求 → 类2；否则为纯寒暄/礼貌语 → 类1；其余 → 类3。
+          memory:
+            enabled: true
+            window:
+              enabled: true
+              size: 5
           model:
             completion_params:
-              temperature: 0.5
-              top_p: 0.9
-              max_tokens: 4096
+              temperature: 0
             mode: chat
             name: deepseek-chat
             provider: deepseek
-          prompt_template:
-            - id: system-prompt
-              role: system
-              text: >-
-                你是 FinPilot 行业洞察助手，专为金融从业者提供行业分析、市场趋势洞察和投资观点解读服务。请基于最新可获取的信息，提供专业、客观的分析。分析要有数据支撑，观点要明确，风险提示要到位。
-            - id: user-prompt
-              role: user
-              text: "{{#sys.query#}}"
-          selected_features: []
-          title: LLM
-          type: llm
-          vision:
-            enabled: false
-        height: 98
-        id: node-llm
+          query_variable_selector:
+            - sys
+            - query
+          title: 问题分类器
+          type: question-classifier
+        height: 90
+        id: '1754500000002'
         position:
           x: 384
           y: 282
@@ -119,17 +311,103 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 3. 直接回复 闲聊应答（固定文案，不调LLM） ====================
       - data:
-          desc: 输出分析结果
-          outputs:
-            - value_selector:
-                - node-llm
-                - text
-              variable: text
-          title: 结束
-          type: end
-        height: 90
-        id: node-end
+          answer: |-
+            您好！我是 FinPilot 行业洞察助手，专注金融行业的深度分析与可视化。您可以试试：
+
+            1. 分析利率下行对银行净息差的影响
+            2. 对比各大银行零售业务转型进展
+            3. 当前保险市场保费收入结构占比如何？
+          desc: 问候与闲聊的固定应答，不进入分析链路
+          title: 闲聊应答
+          type: answer
+        height: 105
+        id: '1754500000003'
+        position:
+          x: 688
+          y: 80
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 4. 直接回复 兜底应答（固定文案） ====================
+      - data:
+          answer: |-
+            我是 FinPilot 行业洞察助手，专注金融行业洞察领域：
+
+            - 宏观政策解读（利率、降准降息、监管政策等）
+            - 银行/证券/保险行业动态分析
+            - 机构经营对比与市场结构占比研判
+
+            您这个问题超出了我的专业范围，暂无法提供有效帮助。欢迎回到上述领域提问，例如：「分析近期央行降准对银行业的影响」。
+          desc: 超范围问题的固定兜底应答，引导回可问的问题类型
+          title: 兜底应答
+          type: answer
+        height: 105
+        id: '1754500000004'
+        position:
+          x: 688
+          y: 480
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 5. LLM 洞察分析（唯一主分析节点） ====================
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: 六段式专业骨架深度分析，内置防虚构数据硬约束
+          memory:
+            enabled: true
+            window:
+              enabled: true
+              size: 5
+          model:
+            completion_params:
+              temperature: 0.5
+              max_tokens: 4096
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          prompt_template:
+            - id: prompt-insight-system
+              role: system
+              text: |-
+                你是一名资深金融行业分析师（FinPilot 行业洞察助手），擅长宏观政策、银行、证券、保险、基金等金融行业的深度分析。请针对用户的行业分析问题，严格按以下六段式专业骨架输出 Markdown 正文：
+
+                一、核心结论（1-3句先行观点）
+                二、宏观与行业背景（政策/周期/驱动因素）
+                三、影响分析（对金融机构业务的机会与挑战，分点）
+                四、机构应对建议（可落地动作）
+                五、风险提示（含反向情形）
+                六、数据说明
+
+                【防虚构硬约束】
+                1. 所有量化数据必须标注【示例数据】或【行业普遍情况】；
+                2. 无把握的数据直接说"暂无可靠数据"，禁止编造精确数值，优先给区间/量级；
+                3. 末尾固定一行：分析基于模型知识，不构成投资建议。
+
+                【图表判断】
+                回答的最后单独一行输出图表判断标记：
+                - 当问题含对比/趋势/占比语义，且分析中存在≥2个可量化类目时，输出：<need_chart>true</need_chart>
+                - 否则输出：<need_chart>false</need_chart>
+
+                【格式要求】
+                - 正文用 Markdown，结构清晰，使用标题与分点；
+                - 不要在正文里输出任何 JSON 或其他机器格式数据。
+            - id: prompt-insight-user
+              role: user
+              text: |-
+                行业分析问题：{{#sys.query#}}
+          selected_features: []
+          title: 洞察分析
+          type: llm
+          vision:
+            enabled: false
+        height: 98
+        id: '1754500000005'
         position:
           x: 688
           y: 282
@@ -137,3 +415,421 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 6. 代码 报告清洗（剥离 need_chart 标记） ====================
+      - data:
+          code: |-
+            # =====================================================================
+            # 报告清洗节点：从分析 LLM 输出中提取图表判断标记并剥离标记行，
+            # 保证用户看到的报告正文中不含任何内部控制标记。
+            # 输入: llm_text —— LLM「洞察分析」的完整输出
+            # 输出:
+            #   report_clean —— 剥离标记后的干净 Markdown 报告
+            #   need_chart   —— "true" / "false"（默认 "false"）
+            # =====================================================================
+            import re
+
+
+            def main(llm_text) -> dict:
+                # 入口防御：None/空串/纯空白/非字符串均安全降级，绝不抛异常
+                default_out = {"report_clean": "", "need_chart": "false"}
+                try:
+                    if llm_text is None or not str(llm_text).strip():
+                        return default_out
+                    text = str(llm_text)
+
+                    # 提取 need_chart 标记（大小写不敏感，取最后一次输出为准）
+                    marks = re.findall(
+                        r"<need_chart>\s*(true|false)\s*</need_chart>",
+                        text,
+                        re.IGNORECASE,
+                    )
+                    need_chart = marks[-1].lower() if marks else "false"
+
+                    # 从正文中剥离标记行（含整行残留的空白）
+                    report_clean = re.sub(
+                        r"[ \t]*<need_chart>\s*(?:true|false)\s*</need_chart>[ \t]*\r?\n?",
+                        "",
+                        text,
+                        flags=re.IGNORECASE,
+                    )
+                    report_clean = report_clean.strip()
+
+                    return {
+                        "report_clean": report_clean,
+                        "need_chart": need_chart,
+                    }
+                except Exception:
+                    # 任何意外异常都降级为安全默认值，绝不抛到 Dify 运行时
+                    return default_out
+          code_language: python3
+          desc: 提取并剥离 need_chart 图表判断标记
+          outputs:
+            need_chart:
+              children: null
+              type: string
+            report_clean:
+              children: null
+              type: string
+          title: 报告清洗
+          type: code
+          variables:
+            - value_selector:
+                - '1754500000005'
+                - text
+              variable: llm_text
+        height: 54
+        id: '1754500000006'
+        position:
+          x: 992
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 7. 条件分支1 是否需要图表 ====================
+      - data:
+          cases:
+            - case_id: 'true'
+              conditions:
+                - comparison_operator: is
+                  id: cond-need-chart
+                  value: 'true'
+                  varType: string
+                  variable_selector:
+                    - '1754500000006'
+                    - need_chart
+              id: 'true'
+              logical_operator: and
+          desc: need_chart=true → 图表数据提取；否则 → 无图表输出
+          title: 条件分支1
+          type: if-else
+        height: 126
+        id: '1754500000007'
+        position:
+          x: 1296
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 8. LLM 图表数据提取（独立短节点） ====================
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: 从分析报告中提取结构化图表数据，只输出一个 JSON 对象
+          memory:
+            enabled: false
+            window:
+              enabled: false
+              size: 0
+          model:
+            completion_params:
+              temperature: 0.2
+              max_tokens: 512
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          prompt_template:
+            - id: prompt-chart-system
+              role: system
+              text: |-
+                你是数据提取器。请从用户提供的分析报告中提取图表数据，只输出一个 JSON 对象（不要用 ```json 包裹，不要输出任何解释、前言或多余文字），格式如下：
+                {"title":"图表标题（示例数据）","chart_type":"bar/line/pie三选一","categories":["类目1","类目2"],"data":[数值1,数值2]}
+
+                【硬要求】
+                1. categories 与 data 元素数量必须一致（2-6个）；
+                2. data 必须是数字（整数或小数），禁止百分号、单位、文字；
+                3. title 必须带"（示例数据）"后缀；
+                4. chart_type 判断规则：占比类用 pie，趋势类用 line，对比类用 bar；
+                5. 若报告中不存在≥2个可量化类目，输出：{"title":"","chart_type":"","categories":[],"data":[]}
+
+                【示例1 柱状图】
+                报告内容：招商银行零售 AUM 约 13 万亿，平安银行约 4 万亿，中信银行约 4.4 万亿（均为示例数据）。
+                输出：{"title":"主要银行零售AUM规模对比（示例数据）","chart_type":"bar","categories":["招商银行","平安银行","中信银行"],"data":[13,4,4.4]}
+
+                【示例2 饼图】
+                报告内容：人身险保费中寿险占比约 75%，健康险约 18%，意外险约 7%（行业普遍情况）。
+                输出：{"title":"人身险保费收入结构占比（示例数据）","chart_type":"pie","categories":["寿险","健康险","意外险"],"data":[75,18,7]}
+            - id: prompt-chart-user
+              role: user
+              text: |-
+                分析报告：
+                {{#1754500000005.text#}}
+          selected_features: []
+          title: 图表数据提取
+          type: llm
+          vision:
+            enabled: false
+        height: 98
+        id: '1754500000008'
+        position:
+          x: 1600
+          y: 180
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 9. 代码 图表校验与组装 ====================
+      - data:
+          code: |-
+            # =====================================================================
+            # 图表校验与组装节点：容错解析图表 LLM 输出的 JSON，严格校验后
+            # 组装 ECharts option 并包成 ```echarts 代码块；校验失败降级。
+            # 输入: chart_text —— LLM「图表数据提取」的输出（允许 None/空值）
+            # 输出:
+            #   chart_md —— ```echarts 代码块（失败时为 ""）
+            #   ok       —— True / False
+            # =====================================================================
+            import json
+            import re
+
+
+            def main(chart_text) -> dict:
+                # 入口防御：None/空串/纯空白/非字符串 → 直接降级，绝不抛异常
+                fail = {"chart_md": "", "ok": False}
+                if not chart_text or not str(chart_text).strip():
+                    return fail
+                try:
+                    text = str(chart_text).strip()
+
+                    # ---------- 容错解析：直接解析 → 代码块提取 → 正则提取 {...} ----------
+                    parsed = None
+                    try:
+                        parsed = json.loads(text)
+                    except Exception:
+                        parsed = None
+                    if parsed is None:
+                        m = re.search(r"```[a-zA-Z]*\s*(\{[\s\S]*?\})\s*```", text)
+                        if m:
+                            try:
+                                parsed = json.loads(m.group(1))
+                            except Exception:
+                                parsed = None
+                    if parsed is None:
+                        m = re.search(r"\{[\s\S]*\}", text)
+                        if m:
+                            try:
+                                parsed = json.loads(m.group(0))
+                            except Exception:
+                                parsed = None
+                    if not isinstance(parsed, dict):
+                        return fail
+
+                    # ---------- 字段校验 ----------
+                    categories = parsed.get("categories")
+                    data = parsed.get("data")
+                    chart_type = str(parsed.get("chart_type") or "").strip().lower()
+                    title = str(parsed.get("title") or "").strip()
+
+                    if not isinstance(categories, list) or not categories:
+                        return fail
+                    if not isinstance(data, list) or not data:
+                        return fail
+                    if len(categories) != len(data):
+                        return fail
+                    if chart_type not in ("bar", "line", "pie"):
+                        return fail
+
+                    # data 元素必须可转数字
+                    nums = []
+                    for v in data:
+                        try:
+                            nums.append(float(v))
+                        except Exception:
+                            return fail
+
+                    cats = [str(c) for c in categories]
+                    if not title:
+                        title = "图表数据（示例数据）"
+
+                    # ---------- 通用规范：极光主题配色 + 标题/副标题 + 动画 ----------
+                    palette = [
+                        "#4D8DFF", "#8B5CF6", "#22D3EE", "#34D399",
+                        "#FBBF24", "#F87171", "#94A3B8",
+                    ]
+                    title_conf = {
+                        "text": title,
+                        "subtext": "数据来源：示例数据",
+                        "left": "center",
+                        "textStyle": {"fontSize": 15, "fontWeight": 600},
+                        "subtextStyle": {"fontSize": 11, "color": "#9CA3AF"},
+                    }
+
+                    # ---------- 按 chart_type 组装 ECharts option ----------
+                    if chart_type == "pie":
+                        # 类目较多时标签只显示百分比，类目名由底部图例承担
+                        label_formatter = "{d}%" if len(cats) > 5 else "{b}\n{d}%"
+                        option = {
+                            "color": palette,
+                            "title": title_conf,
+                            "tooltip": {
+                                "trigger": "item",
+                                "formatter": "{b}：{c}（{d}%）",
+                            },
+                            "legend": {"bottom": 0, "type": "scroll"},
+                            "animationDuration": 600,
+                            "series": [
+                                {
+                                    "type": "pie",
+                                    "radius": ["42%", "68%"],
+                                    "center": ["50%", "55%"],
+                                    "data": [
+                                        {"name": cats[i], "value": nums[i]}
+                                        for i in range(len(cats))
+                                    ],
+                                    "itemStyle": {
+                                        "borderRadius": 6,
+                                        "borderColor": "#fff",
+                                        "borderWidth": 2,
+                                    },
+                                    "label": {
+                                        "formatter": label_formatter,
+                                        "fontSize": 12,
+                                        "lineHeight": 18,
+                                    },
+                                    "labelLine": {"length": 16, "length2": 12},
+                                }
+                            ],
+                        }
+                    else:
+                        option = {
+                            "color": palette,
+                            "title": title_conf,
+                            "tooltip": {"trigger": "axis"},
+                            "grid": {
+                                "left": "6%",
+                                "right": "8%",
+                                "top": 70,
+                                "bottom": 50,
+                                "containLabel": True,
+                            },
+                            "animationDuration": 600,
+                            "xAxis": {
+                                "type": "category",
+                                "data": cats,
+                                "axisLabel": {
+                                    "interval": 0,
+                                    "rotate": 30 if len(cats) > 4 else 0,
+                                },
+                            },
+                            "yAxis": {
+                                "type": "value",
+                                "splitLine": {"lineStyle": {"type": "dashed"}},
+                            },
+                        }
+                        if chart_type == "bar":
+                            option["series"] = [
+                                {
+                                    "type": "bar",
+                                    "data": nums,
+                                    "barMaxWidth": 45,
+                                    "itemStyle": {"borderRadius": [6, 6, 0, 0]},
+                                    "label": {"show": True, "position": "top", "fontSize": 11},
+                                }
+                            ]
+                        else:
+                            option["series"] = [
+                                {
+                                    "type": "line",
+                                    "data": nums,
+                                    "smooth": True,
+                                    "symbolSize": 8,
+                                    "areaStyle": {"opacity": 0.12},
+                                    "label": {"show": True, "fontSize": 11},
+                                }
+                            ]
+
+                    chart_md = "```echarts\n" + json.dumps(option, ensure_ascii=False) + "\n```"
+                    return {"chart_md": chart_md, "ok": True}
+                except Exception:
+                    # 任何意外异常（类型转换/索引访问/序列化）都降级，绝不抛到 Dify 运行时
+                    return fail
+          code_language: python3
+          desc: 容错解析图表 JSON，校验并组装 ECharts 代码块
+          outputs:
+            chart_md:
+              children: null
+              type: string
+            ok:
+              children: null
+              type: boolean
+          title: 图表校验与组装
+          type: code
+          variables:
+            - value_selector:
+                - '1754500000008'
+                - text
+              variable: chart_text
+        height: 54
+        id: '1754500000009'
+        position:
+          x: 1904
+          y: 180
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 10. 条件分支2 图表是否合格 ====================
+      - data:
+          cases:
+            - case_id: 'true'
+              conditions:
+                - comparison_operator: is
+                  id: cond-chart-ok
+                  value: 'true'
+                  varType: boolean
+                  variable_selector:
+                    - '1754500000009'
+                    - ok
+              id: 'true'
+              logical_operator: and
+          desc: 图表校验合格 → 带图表输出；失败 → 降级为纯文本报告
+          title: 条件分支2
+          type: if-else
+        height: 126
+        id: '1754500000010'
+        position:
+          x: 2208
+          y: 180
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 11. 直接回复 带图表 ====================
+      - data:
+          answer: |-
+            {{#1754500000006.report_clean#}}
+
+            {{#1754500000009.chart_md#}}
+          desc: 结论与图表成对交付（```echarts 块由前端渲染为交互图表）
+          title: 带图表输出
+          type: answer
+        height: 105
+        id: '1754500000011'
+        position:
+          x: 2512
+          y: 120
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 12. 直接回复 无图表 ====================
+      - data:
+          answer: '{{#1754500000006.report_clean#}}'
+          desc: 纯文本报告输出（条件分支1的否、条件分支2的否均汇入本节点）
+          title: 无图表输出
+          type: answer
+        height: 105
+        id: '1754500000012'
+        position:
+          x: 2512
+          y: 340
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.6

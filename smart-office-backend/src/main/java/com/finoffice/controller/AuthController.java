@@ -2,6 +2,7 @@ package com.finoffice.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.finoffice.common.BizException;
+import com.finoffice.common.OpLogger;
 import com.finoffice.common.R;
 import com.finoffice.dto.LoginResult;
 import com.finoffice.dto.UserInfo;
@@ -34,6 +35,7 @@ public class AuthController {
         LoginResult result = userService.checkLogin(req.getUsername().trim(), req.getPassword());
         StpUtil.login(result.getId());
         result.setToken(StpUtil.getTokenValue());
+        OpLogger.log(result.getId(), result.getUsername(), "AUTH", "登录成功", "用户登录平台");
         return R.ok(result);
     }
 

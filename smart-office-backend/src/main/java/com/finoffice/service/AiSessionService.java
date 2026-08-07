@@ -34,11 +34,19 @@ public class AiSessionService {
 
     /** 我的会话列表（最近更新的在前） */
     public List<AiSession> listByUser(Long userId) {
-        return sessionMapper.selectList(
-                new LambdaQueryWrapper<AiSession>()
-                        .eq(AiSession::getUserId, userId)
-                        .eq(AiSession::getStatus, 1)
-                        .orderByDesc(AiSession::getUpdateTime));
+        return listByUser(userId, null);
+    }
+
+    /** 我的会话列表，可选按智能体过滤（agentId 为 null 时不过滤） */
+    public List<AiSession> listByUser(Long userId, Long agentId) {
+        LambdaQueryWrapper<AiSession> wrapper = new LambdaQueryWrapper<AiSession>()
+                .eq(AiSession::getUserId, userId)
+                .eq(AiSession::getStatus, 1)
+                .orderByDesc(AiSession::getUpdateTime);
+        if (agentId != null) {
+            wrapper.eq(AiSession::getAgentId, agentId);
+        }
+        return sessionMapper.selectList(wrapper);
     }
 
     /** 会话历史消息（含归属校验） */
@@ -53,10 +61,10 @@ public class AiSessionService {
     /**
      * 获取或自动创建会话：未传 sessionId 时按消息内容创建新会话
      */
-    public Long getOrCreateSession(Long userId, Long sessionId, String firstMessage) {
+    public Long getOrCreateSession(Long userId, Long sessionId, Long agentId, String firstMessage) {
         if (sessionId == null) {
             String title = firstMessage.length() > 20 ? firstMessage.substring(0, 20) + "…" : firstMessage;
-            return createSession(userId, null, title).getId();
+            return createSession(userId, agentId, title).getId();
         }
         checkOwner(userId, sessionId);
         return sessionId;

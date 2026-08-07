@@ -10,4 +10,6 @@ public class LoginResult {
     private String realName;
     private String deptName;
     private String token;
+    /** 角色码列表，如 ["ADMIN"]（前端菜单/路由权限用） */
+    private java.util.List<String> roles;
 }

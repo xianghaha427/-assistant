@@ -51,14 +51,28 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { login } from '../api'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
 const form = reactive({ username: '', password: '' })
+
+/**
+ * 校验 redirect 参数，防开放重定向：
+ * - 必须以单个 / 开头的站内相对路径
+ * - 拒绝 // 开头（协议相对 URL）
+ * - 拒绝跳回登录页本身
+ */
+function safeRedirect(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null
+  if (/\/login(\/|\?|$)/.test(raw)) return null
+  return raw
+}
 
 async function handleLogin() {
   if (!form.username || !form.password) {
@@ -69,9 +83,11 @@ async function handleLogin() {
   try {
     const res = await login(form)
     localStorage.setItem('so_token', res.token)
-    localStorage.setItem('so_user', JSON.stringify(res.user))
+    localStorage.setItem('so_user', JSON.stringify(res))
     ElMessage.success('欢迎回来')
-    router.push('/')
+    // 优先回跳守卫携带的 redirect；无/非法时三角色统一落地工作台
+    const redirect = safeRedirect(route.query.redirect)
+    router.replace(redirect || '/dashboard')
   } catch (e) {
     // 错误已由拦截器提示
   } finally {
@@ -99,19 +115,19 @@ async function handleLogin() {
 }
 .aurora-1 {
   width: 560px; height: 420px;
-  background: rgba(77, 141, 255, 0.28);
+  background: rgba(8, 180, 188, 0.28);
   top: -140px; left: -100px;
   animation: drift1 16s ease-in-out infinite alternate;
 }
 .aurora-2 {
   width: 480px; height: 400px;
-  background: rgba(139, 92, 246, 0.22);
+  background: rgba(4, 126, 133, 0.20);
   bottom: -160px; right: -80px;
   animation: drift2 20s ease-in-out infinite alternate;
 }
 .aurora-3 {
   width: 300px; height: 300px;
-  background: rgba(34, 211, 238, 0.13);
+  background: rgba(92, 208, 214, 0.12);
   top: 55%; left: 12%;
   animation: drift1 24s ease-in-out infinite alternate-reverse;
 }
@@ -142,7 +158,7 @@ async function handleLogin() {
   width: 400px;
   padding: 44px 40px 32px;
   border-radius: 24px;
-  background: rgba(15, 22, 38, 0.66);
+  background: rgba(6, 46, 51, 0.62);
   border: 1px solid var(--border);
   backdrop-filter: blur(28px);
   box-shadow: var(--shadow-lg), var(--glow-soft);
@@ -167,7 +183,7 @@ async function handleLogin() {
   position: absolute;
   inset: -6px;
   border-radius: 23px;
-  border: 1px solid rgba(77, 141, 255, 0.35);
+  border: 1px solid rgba(8, 180, 188, 0.35);
   animation: pulse-ring 2.6s ease-out infinite;
 }
 @keyframes pulse-ring {

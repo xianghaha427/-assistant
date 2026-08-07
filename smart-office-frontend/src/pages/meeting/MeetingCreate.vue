@@ -1,31 +1,31 @@
-﻿<template>
+<template>
   <div class="meeting-create">
-    <!-- ====== 椤堕儴鏍囬 ====== -->
+    <!-- ====== 顶部标题 ====== -->
     <div class="create-header">
       <button class="back-btn" @click="$router.back()">
-        鈫?杩斿洖
+        ← 返回
       </button>
-      <h2 class="page-title">鏂板缓<span class="grad-text">浼氳</span></h2>
-      <p class="page-subtitle">绮樿创杞啓鏂囨湰鎴栦笂浼犻煶棰戯紝AI 灏嗚嚜鍔ㄦ彁鍙栬棰樸€佸喅璁笌寰呭姙</p>
+      <h2 class="page-title">新建<span class="grad-text">会议</span></h2>
+      <p class="page-subtitle">粘贴转写文本或上传纪要文档，AI 将自动提取议题、决议与待办</p>
     </div>
 
-    <!-- ====== 琛ㄥ崟鍗＄墖 ====== -->
+    <!-- ====== 表单卡片 ====== -->
     <div class="form-card card">
-      <!-- 浼氳鏍囬 -->
+      <!-- 会议标题 -->
       <div class="form-group">
-        <label class="form-label">浼氳鏍囬 <span class="required">*</span></label>
+        <label class="form-label">会议标题 <span class="required">*</span></label>
         <el-input
           v-model="form.title"
-          placeholder="渚嬪锛氫骇鍝佸懆浼?2026-08-05"
+          placeholder="例如：产品周会 2026-08-05"
           size="large"
         />
       </div>
 
-      <!-- 杈撳叆鏂瑰紡 Tab -->
+      <!-- 输入方式 Tab -->
       <div class="form-group">
-        <label class="form-label">浼氳鍐呭</label>
+        <label class="form-label">会议内容</label>
         <el-tabs v-model="activeTab" class="create-tabs">
-          <el-tab-pane label="鏂囨湰杈撳叆" name="text">
+          <el-tab-pane label="文本输入" name="text">
             <el-input
               v-model="form.raw_text"
               type="textarea"
@@ -34,35 +34,38 @@
               class="text-area"
             />
           </el-tab-pane>
-          <el-tab-pane label="闊抽涓婁紶" name="audio">
+          <el-tab-pane label="文档上传" name="file">
             <el-upload
               ref="uploadRef"
               class="audio-upload"
               drag
+              multiple
               :auto-upload="false"
-              :limit="1"
-              accept=".mp3,.wav,.m4a,audio/*"
+              :show-file-list="false"
+              accept=".pdf,.md,.docx,.txt"
               :on-change="handleFileChange"
-              :on-remove="handleFileRemove"
             >
               <div class="upload-inner">
-                <div class="upload-icon">馃帣</div>
-                <div class="upload-title">鎷栨嫿闊抽鏂囦欢鍒版澶勶紝鎴?<em>鐐瑰嚮涓婁紶</em></div>
-                <div class="upload-hint">鏀寔 MP3 / WAV / M4A 鏍煎紡</div>
+                <div class="upload-icon">📄</div>
+                <div class="upload-title">拖拽会议纪要文档到此处，或 <em>点击上传</em></div>
+                <div class="upload-hint">支持 PDF / MD / DOCX / TXT，可多文件；不输入文字时将基于文档摘要</div>
               </div>
             </el-upload>
-            <div v-if="audioFile" class="file-info">
-              <span class="file-icon">馃幍</span>
-              <span class="file-name">{{ audioFile.name }}</span>
-              <span class="file-size">{{ formatSize(audioFile.size) }}</span>
+            <div v-if="docFiles.length" class="doc-list">
+              <div v-for="(f, i) in docFiles" :key="f.name + i" class="file-info">
+                <span class="file-icon">📄</span>
+                <span class="file-name">{{ f.name }}</span>
+                <span class="file-size">{{ formatSize(f.size) }}</span>
+                <button class="file-remove" @click="removeDocFile(i)">移除</button>
+              </div>
             </div>
           </el-tab-pane>
         </el-tabs>
       </div>
 
-      <!-- 鎻愪氦鎸夐挳 -->
+      <!-- 提交按钮 -->
       <div class="form-actions">
-        <el-button @click="$router.back()">鍙栨秷</el-button>
+        <el-button @click="$router.back()">取消</el-button>
         <el-button
           type="primary"
           size="large"
@@ -70,19 +73,19 @@
           :disabled="!canSubmit"
           @click="handleSubmit"
         >
-          <span v-if="!submitting">鉁?寮€濮嬬敓鎴愮</span>
-          <span v-else>鐢熸垚涓?..</span>
+          <span v-if="!submitting">✓ 开始生成</span>
+          <span v-else>生成中...</span>
         </el-button>
       </div>
     </div>
 
-    <!-- ====== 鍏ㄥ睆 Loading ====== -->
+    <!-- ====== 全屏 Loading ====== -->
     <Teleport to="body">
       <div v-if="generating" class="gen-overlay">
         <div class="gen-card card">
           <div class="gen-spinner"></div>
-          <div class="gen-title">AI 姝ｅ湪鍒嗘瀽浼氳鍐呭...</div>
-          <div class="gen-desc">姝ｅ湪璇嗗埆鍙戣█浜恒€佹彁鍙栬棰樹笌鍐宠</div>
+          <div class="gen-title">AI 正在分析会议内容...</div>
+          <div class="gen-desc">正在识别发言人、提取议题与决议</div>
         </div>
       </div>
     </Teleport>
@@ -93,7 +96,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { createMeeting, generateSummary, uploadAudio } from '../../api/meeting.js'
+import { createMeeting, generateSummary, uploadFile } from '../../api/meeting.js'
 
 const router = useRouter()
 
@@ -103,24 +106,27 @@ const form = ref({
   source_type: 'text'
 })
 const activeTab = ref('text')
-const audioFile = ref(null)
+const docFiles = ref([])
 const submitting = ref(false)
 const generating = ref(false)
 
 const canSubmit = computed(() => {
   if (!form.value.title.trim()) return false
-  if (activeTab.value === 'text') return form.value.raw_text.trim().length > 0
-  return !!audioFile.value
+  // 有文字即可；无文字时须至少上传一份纪要文档
+  return form.value.raw_text.trim().length > 0 || docFiles.value.length > 0
 })
 
 function handleFileChange(file) {
-  audioFile.value = file.raw
-  form.value.source_type = 'audio'
+  if (!file?.raw) return
+  if (docFiles.value.some(f => f.name === file.raw.name)) {
+    ElMessage.warning('该文件已添加')
+    return
+  }
+  docFiles.value.push(file.raw)
 }
 
-function handleFileRemove() {
-  audioFile.value = null
-  form.value.source_type = 'text'
+function removeDocFile(i) {
+  docFiles.value.splice(i, 1)
 }
 
 function formatSize(bytes) {
@@ -135,41 +141,47 @@ async function handleSubmit() {
   submitting.value = true
 
   try {
-    let payload = {
-      title: form.value.title.trim(),
-      source_type: activeTab.value
-    }
-
-    // 闊抽涓婁紶
-    if (activeTab.value === 'audio' && audioFile.value) {
+    // 纪要文档直传 Dify（创建会议前先取得 dify_file_id）
+    const fileIds = []
+    if (docFiles.value.length) {
       generating.value = true
-      try {
-        const uploadResult = await uploadAudio(audioFile.value)
-        payload.raw_text = uploadResult?.raw_text || ''
-      } catch (e) {
-        ElMessage.error('闊抽涓婁紶澶辫触')
-        return
+      for (const f of docFiles.value) {
+        try {
+          const up = await uploadFile(f)
+          if (up?.dify_file_id) fileIds.push(up.dify_file_id)
+        } catch (e) {
+          // 后端已对瞬时网络抖动（Connection reset 等）自动重试一次，此处为最终失败提示
+          ElMessage.error('文档 ' + f.name + ' 上传失败，请重试')
+          return
+        }
       }
-    } else {
-      payload.raw_text = form.value.raw_text
+      docFiles.value = [] // 上传成功后清理本地临时文件列表
     }
 
-    // 鍒涘缓浼氳
+    const payload = {
+      title: form.value.title.trim(),
+      source_type: fileIds.length && !form.value.raw_text.trim() ? 'file' : 'text',
+      raw_text: form.value.raw_text,
+      file_ids: fileIds
+    }
+
+    // 创建会议
     const meeting = await createMeeting(payload)
     generating.value = true
 
-    // 瑙﹀彂 AI 鐢熸垚绾
+    // 触发 AI 生成纪要（仅文件无文字时后端自动以「摘要」为 query）
     try {
-      await generateSummary(meeting.id)
-      ElMessage.success('绾鐢熸垚鎴愬姛')
+      await generateSummary(meeting.id, fileIds)
+      // 纪要为异步生成：不提前报"成功"，进度由详情页轮询展示
+      ElMessage.info('纪要正在生成，请到会议详情查看进度')
       router.push(`/meeting/${meeting.id}`)
     } catch (e) {
-      // 鍗充娇鐢熸垚澶辫触涔熻烦杞埌璇︽儏锛岀敤鎴峰彲閲嶈瘯
-      ElMessage.warning('纪要生成中，请稍后查看')
+      // 即使触发失败也跳转到详情，用户可重试
+      ElMessage.warning('会议已创建，纪要可到详情页重新生成')
       router.push(`/meeting/${meeting.id}`)
     }
   } catch (e) {
-    ElMessage.error('鍒涘缓浼氳澶辫触')
+    ElMessage.error('创建会议失败')
   } finally {
     submitting.value = false
     generating.value = false
@@ -211,19 +223,19 @@ async function handleSubmit() {
 }
 .required { color: #f56c6c; }
 
-/* Tabs 鏍峰紡寰皟 */
+/* Tabs 样式微调 */
 .create-tabs :deep(.el-tabs__nav-wrap::after) {
   background: var(--border-light);
 }
 
-/* 鏂囨湰鍩?*/
+/* 文本域 */
 .text-area :deep(.el-textarea__inner) {
   font-size: 13.5px;
   line-height: 1.7;
   resize: none;
 }
 
-/* 涓婁紶鍖?*/
+/* 上传区 */
 .audio-upload :deep(.el-upload-dragger) {
   background: rgba(255, 255, 255, 0.02);
   border: 1px dashed var(--border-strong);
@@ -258,7 +270,7 @@ async function handleSubmit() {
   margin-top: 12px;
   padding: 10px 14px;
   background: var(--accent-soft);
-  border: 1px solid rgba(77, 141, 255, 0.2);
+  border: 1px solid rgba(8, 180, 188, 0.2);
   border-radius: var(--radius-sm);
   font-size: 13px;
 }
@@ -272,7 +284,18 @@ async function handleSubmit() {
 }
 .file-size { color: var(--text-tertiary); font-size: 12px; }
 
-/* 鎿嶄綔鎸夐挳 */
+.doc-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.file-remove {
+  background: none;
+  border: none;
+  color: #f56c6c;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.file-remove:hover { text-decoration: underline; }
+
+/* 操作按钮 */
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -281,7 +304,7 @@ async function handleSubmit() {
   border-top: 1px solid var(--border-light);
 }
 
-/* ====== 鍏ㄥ睆 Loading ====== */
+/* ====== 全屏 Loading ====== */
 .gen-overlay {
   position: fixed;
   inset: 0;

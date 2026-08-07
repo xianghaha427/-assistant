@@ -1,0 +1,606 @@
+# =====================================================================
+# FinPilot - PPT大纲生成 DSL（Workflow 应用，非对话型，一键执行）
+# ---------------------------------------------------------------------
+# 用途：输入 PPT 主题（可选风格/页数），自动产出结构化 PPT 内容，
+#       供前端渲染预览。
+# 目标平台：Dify 1.16.1，模式 workflow
+# 底层模型：deepseek-chat（provider: deepseek）
+#
+# [v1.1] 修复迭代输出问题：迭代项引用须使用「迭代节点ID.item.字段」而非字面量 iteration.item，
+#        否则循环体内 LLM 变量解析失败、迭代输出为空；同时增强单页生成提示词与组装代码容错解析。
+#
+# [v1.2] 修复重新导入后发布检查清单报错（无效变量/节点未连接）：对照 Dify 真实导出格式补齐
+#        迭代容器结构——循环体内子节点必须携带 parentId+extent: parent 且使用相对父容器坐标，
+#        iteration-start 节点渲染 type 须为 custom-iteration-start（data.type 保持 iteration-start），
+#        内部边补 zIndex，否则导入后前端无法将子节点识别为迭代容器成员。
+#
+# 工作流：
+#   开始(topic/style/page_count) → LLM[大纲生成] → 代码执行[解析大纲]
+#   → 循环迭代(逐页: LLM[单页内容生成]) → 代码执行[组装PPT] → 结束
+#
+# 输出 JSON 结构（end 节点 ppt_json，供前端渲染预览）：
+#   {
+#     "title": "主标题",
+#     "subtitle": "副标题",
+#     "style": "风格",
+#     "generated_at": "生成时间(YYYY-MM-DD HH:MM:SS)",
+#     "pages": [
+#       {
+#         "page": 1,
+#         "title": "页面标题",
+#         "type": "cover/content/data/summary",
+#         "bullets": ["要点1", "要点2", "要点3"],
+#         "speaker_notes": "演讲备注(50字内)",
+#         "layout_suggestion": "布局建议(标题+要点/图文/数据图表/表格)"
+#       }
+#     ]
+#   }
+#
+# 导入方式：Dify 工作室 → 创建应用 → 导入 DSL 文件
+# =====================================================================
+app:
+  description: >-
+    PPT大纲生成工具：输入 PPT 主题（可选风格与目标页数），自动完成大纲策划、
+    逐页内容生成与结构化组装，直接产出可供前端渲染预览的 PPT JSON。
+    适用于金融企业经营分析、项目汇报、制度宣导、培训课件等汇报场景。
+  icon: "📊"
+  icon_background: '#E0F2FE'
+  mode: workflow
+  name: PPT大纲生成
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.3.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      # 开始 → 大纲生成(LLM)
+      - data:
+          isInIteration: false
+          sourceType: start
+          targetType: llm
+        id: edge-1754361600001
+        source: '1754361600000'
+        sourceHandle: source
+        target: '1754361600001'
+        targetHandle: target
+        type: custom
+      # 大纲生成(LLM) → 解析大纲(代码执行)
+      - data:
+          isInIteration: false
+          sourceType: llm
+          targetType: code
+        id: edge-1754361600002
+        source: '1754361600001'
+        sourceHandle: source
+        target: '1754361600002'
+        targetHandle: target
+        type: custom
+      # 解析大纲(代码执行) → 循环迭代
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: iteration
+        id: edge-1754361600003
+        source: '1754361600002'
+        sourceHandle: source
+        target: '1754361600003'
+        targetHandle: target
+        type: custom
+      # 循环迭代内部边：迭代起点(iteration-start) → 单页内容生成(LLM)
+      # ID 格式与 Dify 真实导出一致：{迭代起点ID}-source-{目标节点ID}-target
+      - data:
+          isInIteration: true
+          isInLoop: false
+          iterationId: '1754361600003'
+          iteration_id: '1754361600003'
+          sourceType: iteration-start
+          targetType: llm
+        id: 1754361600003start0-source-1754361600004-target
+        source: 1754361600003start0
+        sourceHandle: source
+        target: '1754361600004'
+        targetHandle: target
+        type: custom
+        zIndex: 1002
+      # 循环迭代 → 组装PPT(代码执行)
+      - data:
+          isInIteration: false
+          sourceType: iteration
+          targetType: code
+        id: edge-1754361600005
+        source: '1754361600003'
+        sourceHandle: source
+        target: '1754361600005'
+        targetHandle: target
+        type: custom
+      # 组装PPT(代码执行) → 结束
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: end
+        id: edge-1754361600006
+        source: '1754361600005'
+        sourceHandle: source
+        target: '1754361600006'
+        targetHandle: target
+        type: custom
+    nodes:
+      # ---------------- 开始节点 ----------------
+      - data:
+          desc: 输入 PPT 主题、风格与目标页数
+          title: 开始
+          type: start
+          variables:
+            - label: PPT 主题
+              variable: topic
+              required: true
+              type: text-input
+              max_length: 200
+              options: []
+              description: PPT 主题，如：2026年三季度经营分析汇报
+            - label: 汇报风格
+              variable: style
+              required: false
+              type: select
+              default: 正式商务
+              options:
+                - 正式商务
+                - 简洁现代
+                - 数据驱动
+              description: PPT 整体风格，默认 正式商务
+            - label: 目标页数
+              variable: page_count
+              required: false
+              type: number
+              default: '8'
+              description: 建议页数 6-15
+        height: 116
+        id: '1754361600000'
+        position:
+          x: 80
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ---------------- LLM 节点：大纲生成 ----------------
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: 根据主题、风格、页数要求策划 PPT 整体大纲
+          model:
+            completion_params:
+              temperature: 0.7
+              top_p: 0.9
+              max_tokens: 2048
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          prompt_template:
+            - id: prompt-outline-system
+              role: system
+              text: |-
+                你是一名资深 PPT 策划专家，长期服务金融行业客户，深谙金融企业典型汇报场景：经营分析、项目汇报、制度宣导、培训课件。
+                请根据用户给定的主题、风格与目标页数，产出一份完整、可直接落地的 PPT 大纲。
+
+                【输出要求】
+                1. 必须输出严格 JSON，并用 ```json 代码块包裹，不要输出任何 JSON 之外的解释文字。
+                2. JSON 结构如下：
+                ```json
+                {
+                  "title": "PPT主标题",
+                  "subtitle": "副标题",
+                  "sections": [
+                    {"page": 1, "title": "页面标题", "type": "cover/content/data/summary", "key_point": "该页核心要点提示"}
+                  ]
+                }
+                ```
+                3. sections 结构要求：第 1 页必须为封面页（type=cover），第 2 页为目录页（type=content），中间按目标页数安排内容页（type 按内容性质取 content 或 data），最后一页为总结页（type=summary）。
+                4. 每页的 key_point 用一句话点明该页应传达的核心信息，贴合金融企业汇报语境，逻辑层层递进。
+                5. 主标题要有汇报感，副标题可补充汇报单位/时间语境。
+            - id: prompt-outline-user
+              role: user
+              text: |-
+                主题：{{#1754361600000.topic#}}
+                风格：{{#1754361600000.style#}}
+                目标页数：{{#1754361600000.page_count#}}
+
+                请生成符合上述要求的 PPT 大纲 JSON。
+          selected_features: []
+          title: 大纲生成
+          type: llm
+          vision:
+            enabled: false
+        height: 98
+        id: '1754361600001'
+        position:
+          x: 384
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ---------------- 代码执行节点：解析大纲 ----------------
+      - data:
+          code: |-
+            import json
+            import re
+
+
+            def main(arg1: str) -> dict:
+                """
+                解析「大纲生成」LLM 输出的大纲文本：
+                1. 优先用正则提取 ```json ... ``` 代码块；
+                2. 提取失败则回退为整段文本直接 json.loads；
+                3. 校验 title / sections 基本结构，缺失则抛出带上下文的错误。
+                返回：
+                    outline_json - 原始大纲 JSON 字符串（供后续「组装PPT」节点复用）
+                    sections     - 大纲页面数组（供循环节点逐页迭代）
+                """
+                text = (arg1 or "").strip()
+                if not text:
+                    raise ValueError("大纲生成节点输出为空，请检查 LLM 节点是否正常返回")
+
+                # ---------- 第 1 步：正则提取 ```json 代码块 ----------
+                json_str = None
+                match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+                if match:
+                    json_str = match.group(1).strip()
+                else:
+                    # 回退：LLM 未包裹代码块时，尝试直接解析全文
+                    json_str = text
+
+                # ---------- 第 2 步：JSON 解析 ----------
+                try:
+                    outline = json.loads(json_str)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"大纲 JSON 解析失败: {e}; 原始输出片段: {text[:200]}")
+
+                # ---------- 第 3 步：结构校验 ----------
+                if not isinstance(outline, dict):
+                    raise ValueError("大纲 JSON 顶层必须是对象")
+                if not outline.get("title"):
+                    raise ValueError("大纲 JSON 缺少 title 字段")
+                sections = outline.get("sections")
+                if not isinstance(sections, list) or len(sections) == 0:
+                    raise ValueError("大纲 JSON 缺少有效的 sections 数组")
+
+                return {
+                    # 原始 JSON 字符串，透传给「组装PPT」节点
+                    "outline_json": json.dumps(outline, ensure_ascii=False),
+                    # 页面数组，作为循环迭代的输入
+                    "sections": sections,
+                }
+          code_language: python3
+          desc: 正则提取并解析 LLM 输出的大纲 JSON，失败则抛出明确错误
+          outputs:
+            outline_json:
+              children: null
+              type: string
+            sections:
+              children: null
+              type: array[object]
+          title: 解析大纲
+          type: code
+          variables:
+            - variable: arg1
+              value_selector:
+                - '1754361600001'
+                - text
+        height: 54
+        id: '1754361600002'
+        position:
+          x: 688
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ---------------- 循环迭代节点：逐页生成 ----------------
+      - data:
+          desc: 按大纲逐页迭代，循环体内由 LLM 生成单页内容
+          error_handle_mode: remove-abnormal-output
+          height: 300
+          is_parallel: false
+          iterator_selector:
+            - '1754361600002'
+            - sections
+          output_selector:
+            - '1754361600004'
+            - text
+          output_type: array[string]
+          selected: false
+          startNodeType: llm
+          start_node_id: 1754361600003start0
+          title: 逐页生成
+          type: iteration
+          width: 640
+        height: 300
+        id: '1754361600003'
+        position:
+          x: 992
+          y: 232
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 640
+        zIndex: 1
+      # 循环体内部节点：单页内容生成(LLM)
+      # 关键：parentId+extent: parent 使前端将其识别为迭代容器成员；
+      #       position 为相对父容器（迭代节点）左上角的相对坐标（真实导出格式）
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: 根据当前页面的标题与要点提示生成单页完整内容
+          isInIteration: true
+          isInLoop: false
+          isIterationStart: true
+          iteration_id: '1754361600003'
+          model:
+            completion_params:
+              temperature: 0.7
+              top_p: 0.9
+              max_tokens: 1024
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          prompt_template:
+            - id: prompt-page-system
+              role: system
+              text: |-
+                你是一名专业的 PPT 内容撰写专家，擅长为金融企业汇报撰写精炼、专业的单页 PPT 内容。
+                请根据给定的页面标题与核心要点提示，生成该页的完整内容。
+
+                【内容要求】
+                1. bullets 必须为 3-5 个要点，每条不超过 25 字，语言精炼、有信息量，禁止空话套话。
+                2. speaker_notes 为演讲备注，不超过 50 字，点明该页讲述思路。
+                3. layout_suggestion 从「标题+要点 / 图文 / 数据图表 / 表格」中选择最合适的一种。
+                4. 内容风格须与指定 PPT 风格一致，贴合金融企业汇报语境。
+
+                【输出要求】
+                只输出一个 JSON 对象，不要用 ```json 包裹，不要任何额外解释。JSON 结构如下：
+                {"title": "页面标题", "bullets": ["要点1", "要点2", "要点3"], "speaker_notes": "演讲备注(50字内)", "layout_suggestion": "布局建议"}
+
+                【示例】
+                输入：页面标题「当前网络安全威胁态势分析」，要点提示「勒索软件、钓鱼攻击、供应链风险」
+                输出：{"title": "当前网络安全威胁态势分析", "bullets": ["勒索软件攻击同比增长45%，金融行业成重灾区", "钓鱼攻击手法升级，AI生成伪造邮件难以识别", "供应链安全事件频发，第三方组件成薄弱点", "零日漏洞利用周期缩短，应急响应压力增大"], "speaker_notes": "重点强调威胁态势的严峻性，为后续防护体系升级做铺垫", "layout_suggestion": "标题+要点"}
+            - id: prompt-page-user
+              role: user
+              text: |-
+                页面标题：{{#1754361600003.item.title#}}
+                核心要点提示：{{#1754361600003.item.key_point#}}
+                PPT整体主题：{{#1754361600000.topic#}}
+                风格：{{#1754361600000.style#}}
+
+                请生成该页的完整内容，只输出一个 JSON 对象，不要用 ```json 包裹，不要任何额外解释。
+          selected_features: []
+          selected: false
+          title: 单页内容生成
+          type: llm
+          vision:
+            enabled: false
+        extent: parent
+        height: 98
+        id: '1754361600004'
+        parentId: '1754361600003'
+        position:
+          x: 248
+          y: 98
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+        zIndex: 1002
+      # 循环体内部起始节点（迭代起点，由 Dify 引擎约定）
+      # 渲染 type 必须为 custom-iteration-start，data.type 保持 iteration-start；
+      # draggable/selectable: false；position 为相对父容器坐标
+      - data:
+          desc: ''
+          isInIteration: true
+          iteration_id: '1754361600003'
+          selected: false
+          title: ''
+          type: iteration-start
+        draggable: false
+        extent: parent
+        height: 48
+        id: 1754361600003start0
+        parentId: '1754361600003'
+        position:
+          x: 48
+          y: 123
+        selectable: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom-iteration-start
+        width: 44
+        zIndex: 1002
+      # ---------------- 代码执行节点：组装PPT ----------------
+      - data:
+          code: |-
+            import json
+            import re
+            from datetime import datetime, timezone, timedelta
+
+
+            def _parse_page(raw):
+                """
+                容错解析单页 LLM 输出，返回 dict 或 None。兼容：
+                1. raw 本身已是 dict（部分 Dify 版本迭代输出直接返回对象而非字符串）；
+                2. 标准 JSON 字符串（直接解析）；
+                3. ```json``` 代码块包裹的 JSON（正则提取后解析）；
+                4. 非 JSON 纯文本（降级：按行切分，非空行作为 bullets，避免内容完全丢失）。
+                """
+                # 情况 1：已是对象
+                if isinstance(raw, dict):
+                    return raw
+                if not isinstance(raw, str):
+                    return None
+                text = raw.strip()
+                if not text:
+                    return None
+
+                # 情况 3：优先提取 ```json ... ``` / ``` ... ``` 代码块
+                fence = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+                candidates = []
+                if fence:
+                    candidates.append(fence.group(1).strip())
+                candidates.append(text)
+
+                # 情况 2：标准 JSON 直接解析
+                for chunk in candidates:
+                    try:
+                        obj = json.loads(chunk)
+                        if isinstance(obj, dict):
+                            return obj
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
+                # 补充：从文本中抓取首个 {...} 片段（应对 JSON 前后夹杂解释文字）
+                brace = re.search(r"\{.*\}", text, re.DOTALL)
+                if brace:
+                    try:
+                        obj = json.loads(brace.group(0))
+                        if isinstance(obj, dict):
+                            return obj
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
+                # 情况 4：非 JSON 纯文本降级——按行切分，非空行作为 bullets
+                lines = [ln.strip().lstrip("-•·* ").strip() for ln in text.splitlines()]
+                bullets = [ln for ln in lines if ln]
+                if bullets:
+                    return {"bullets": bullets}
+                return None
+
+
+            def main(arg1: str, arg2: list, arg3: str) -> dict:
+                """
+                组装最终 PPT：
+                - arg1：「解析大纲」节点输出的 outline_json（大纲 JSON 字符串）
+                - arg2：「逐页生成」迭代节点的输出数组（每页 LLM 原始文本）
+                - arg3：开始节点输入的风格 style
+                容错策略：单页 LLM 输出解析失败时，仅保留该页标题等大纲信息。
+                返回：
+                    ppt_json   - 最终结构化 PPT JSON 字符串
+                    page_total - 实际生成的页数
+                """
+                # ---------- 解析大纲 ----------
+                try:
+                    outline = json.loads(arg1 or "{}")
+                except (json.JSONDecodeError, ValueError):
+                    outline = {}
+                sections = outline.get("sections", []) or []
+                page_texts = arg2 or []
+
+                # ---------- 逐页组装（与迭代输出按序对齐） ----------
+                pages = []
+                for i, section in enumerate(sections):
+                    # 页面基础信息来自大纲（兜底来源）
+                    page = {
+                        "page": section.get("page", i + 1),
+                        "title": section.get("title", f"第{i + 1}页"),
+                        "type": section.get("type", "content"),
+                        "bullets": [],
+                        "speaker_notes": "",
+                        "layout_suggestion": "标题+要点",
+                    }
+                    # 对应迭代输出的单页内容；可能为 str / dict / None（错误移除或版本差异），做越界与类型保护
+                    raw = page_texts[i] if i < len(page_texts) else None
+                    parsed = _parse_page(raw)
+                    if isinstance(parsed, dict):
+                        page["title"] = parsed.get("title") or page["title"]
+                        bullets = parsed.get("bullets")
+                        if isinstance(bullets, list):
+                            page["bullets"] = [str(b) for b in bullets if str(b).strip()]
+                        page["speaker_notes"] = str(parsed.get("speaker_notes") or "")
+                        page["layout_suggestion"] = str(parsed.get("layout_suggestion") or page["layout_suggestion"])
+                    # 解析失败时保持大纲兜底内容（只保留标题等基础信息）
+                    pages.append(page)
+
+                # ---------- 组装最终结构 ----------
+                # 生成时间取东八区（北京时间）
+                generated_at = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+                ppt = {
+                    "title": outline.get("title", ""),
+                    "subtitle": outline.get("subtitle", ""),
+                    "style": arg3,
+                    "generated_at": generated_at,
+                    "pages": pages,
+                }
+
+                return {
+                    "ppt_json": json.dumps(ppt, ensure_ascii=False),
+                    "page_total": len(pages),
+                }
+          code_language: python3
+          desc: 合并大纲与逐页内容，容错组装最终 PPT JSON
+          outputs:
+            ppt_json:
+              children: null
+              type: string
+            page_total:
+              children: null
+              type: number
+          title: 组装PPT
+          type: code
+          variables:
+            - variable: arg1
+              value_selector:
+                - '1754361600002'
+                - outline_json
+            - variable: arg2
+              value_selector:
+                - '1754361600003'
+                - output
+            - variable: arg3
+              value_selector:
+                - '1754361600000'
+                - style
+        height: 54
+        id: '1754361600005'
+        position:
+          x: 1696
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ---------------- 结束节点 ----------------
+      - data:
+          desc: 输出结构化 PPT JSON 与总页数
+          outputs:
+            - value_selector:
+                - '1754361600005'
+                - ppt_json
+              variable: ppt_json
+            - value_selector:
+                - '1754361600005'
+                - page_total
+              variable: page_total
+          title: 结束
+          type: end
+        height: 90
+        id: '1754361600006'
+        position:
+          x: 2000
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244

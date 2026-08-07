@@ -16,6 +16,10 @@ public class MeetingActionItem {
     private Long meetingId;
     private String content;
     private String assignee;
+    /** 责任人用户ID（按 sys_user.real_name 模糊匹配落库） */
+    private Long assigneeId;
+    /** 由本待办转换生成的任务ID（防重复转换） */
+    private Long taskId;
     private LocalDateTime deadline;
     private String status;
     private LocalDateTime createTime;

@@ -1,9 +1,9 @@
-﻿<template>
+<template>
   <div class="meeting-detail" v-loading="loading">
-    <!-- ====== 椤堕儴淇℃伅 ====== -->
+    <!-- ====== 顶部信息 ====== -->
     <div class="detail-header card">
       <div class="header-left">
-        <button class="back-btn" @click="$router.push('/meeting')">鈫?杩斿洖鍒楄〃</button>
+        <button class="back-btn" @click="$router.push('/meeting')">← 返回列表</button>
         <h1 class="detail-title">{{ meeting.title }}</h1>
         <div class="detail-meta">
           <span class="meta-time">{{ formatTime(meeting.created_at) }}</span>
@@ -22,74 +22,75 @@
           :loading="regenerating"
           @click="handleRegenerate"
         >
-          閲嶆柊鐢熸垚
+          重新生成
         </el-button>
       </div>
     </div>
 
-    <!-- ====== 涓讳綋涓ゆ爮 ====== -->
+    <!-- ====== 主体两栏 ====== -->
     <div class="detail-body" v-if="summary">
-      <!-- 宸︿晶锛氱邯瑕佹瑙?-->
+      <!-- 左侧：纪要概览 -->
       <div class="detail-main">
         <div class="card summary-card">
           <div class="section-title">
-            <span class="title-icon">馃搵</span>
-            绾姒傝
+            <span class="title-icon">📋</span>
+            纪要概览
+            <span v-if="summary.mock" class="mock-badge">演示模式</span>
           </div>
 
-          <!-- 鍙備細浜?-->
+          <!-- 参会人 -->
           <div class="summary-section" v-if="summary.participants && summary.participants.length">
-            <div class="section-label">鍙備</div>
+            <div class="section-label">参会人</div>
             <div class="participant-tags">
               <span v-for="p in summary.participants" :key="p" class="participant-tag">{{ p }}</span>
             </div>
           </div>
 
-          <!-- 璁鎽樿 -->
+          <!-- 议题摘要 -->
           <div class="summary-section" v-if="summary.topics && summary.topics.length">
-            <div class="section-label">璁鎽樿</div>
+            <div class="section-label">议题摘要</div>
             <ol class="topic-list">
               <li v-for="(t, i) in summary.topics" :key="i">{{ t }}</li>
             </ol>
           </div>
 
-          <!-- 鍐宠浜嬮」 -->
+          <!-- 决议事项 -->
           <div class="summary-section" v-if="summary.decisions && summary.decisions.length">
-            <div class="section-label">鍐宠浜嬮」</div>
+            <div class="section-label">决议事项</div>
             <ul class="decision-list">
               <li v-for="(d, i) in summary.decisions" :key="i">
-                <span class="decision-icon"></span>
+                <span class="decision-icon">✓</span>
                 {{ d }}
               </li>
             </ul>
           </div>
 
-          <!-- 绌虹姸鎬?-->
+          <!-- 空状态 -->
           <div v-if="!summary.participants?.length && !summary.topics?.length && !summary.decisions?.length" class="empty-hint">
-            鏆傛棤绾鍐呭
+            暂无纪要内容
           </div>
         </div>
 
-        <!-- 鍘熷鏂囨湰鎶樺彔 -->
+        <!-- 原始文本折叠 -->
         <div class="card raw-card">
           <el-collapse>
-            <el-collapse-item title="鍘熷杞啓鏂囨湰" name="raw">
-              <div class="raw-text">{{ meeting.raw_text || '鏆傛棤鍘熷鏂囨湰' }}</div>
+            <el-collapse-item title="原始转写文本" name="raw">
+              <div class="raw-text">{{ meeting.raw_text || '暂无原始文本' }}</div>
             </el-collapse-item>
           </el-collapse>
         </div>
       </div>
 
-      <!-- 鍙充晶锛氬緟鍔炰簨椤?-->
+      <!-- 右侧：待办事项 -->
       <div class="detail-side">
         <div class="card actions-card">
           <div class="section-title">
-            <span class="title-icon"></span>
-            寰呭姙浜嬮」
+            <span class="title-icon">✅</span>
+            待办事项
             <span class="action-count">{{ actions.length }}</span>
           </div>
 
-          <div v-if="actions.length === 0" class="empty-hint">鏆傛棤寰呭姙浜嬮」</div>
+          <div v-if="actions.length === 0" class="empty-hint">暂无待办事项</div>
 
           <div class="action-list">
             <div
@@ -98,17 +99,14 @@
               class="action-item"
               :class="{ done: a.status === 'completed' }"
             >
-              <div class="action-check" @click="toggleAction(a)">
-                <span class="check-box" :class="a.status">
-                  <span v-if="a.status === 'completed'" class="check-icon"></span>
-                  <span v-else-if="a.status === 'in_progress'" class="check-icon"></span>
-                </span>
-              </div>
+              <span class="action-status" :class="a.status">{{ ACTION_STATUS_TEXT[a.status] || '未开始' }}</span>
               <div class="action-content">
                 <div class="action-text">{{ a.content }}</div>
                 <div class="action-meta">
                   <span v-if="a.assignee" class="assignee-tag">{{ a.assignee }}</span>
                   <span v-if="a.deadline" class="deadline-tag">{{ formatDate(a.deadline) }}</span>
+                  <span v-if="a.task_id" class="linked-task">🔗 已关联任务</span>
+                  <button v-else class="convert-btn" @click="handleConvert(a)">转为任务</button>
                 </div>
               </div>
             </div>
@@ -117,31 +115,74 @@
       </div>
     </div>
 
-    <!-- 绾鏈敓鎴?-->
+    <!-- 纪要未生成 / 生成中 / 生成失败 -->
     <div class="detail-body" v-else-if="!loading">
-      <div class="no-summary card">
-        <div class="no-summary-icon"></div>
-        <div class="no-summary-title">绾灏氭湭鐢熸垚</div>
-        <div class="no-summary-desc">AI 姝ｅ湪澶勭悊涓紝璇风◢鍚庡埛鏂伴</div>
-        <el-button type="primary" @click="loadData">鍒锋柊</el-button>
+      <div class="no-summary card" :class="{ 'is-failed': meeting.status === 'failed' }">
+        <div class="no-summary-icon">{{ meeting.status === 'failed' ? '⚠' : '✨' }}</div>
+        <div class="no-summary-title">
+          {{ meeting.status === 'processing' ? 'AI 生成中…' : meeting.status === 'failed' ? '纪要生成失败' : '纪要尚未生成' }}
+        </div>
+        <div class="no-summary-desc">
+          {{ meeting.status === 'processing' ? '正在调用 AI 生成会议纪要，页面将自动刷新'
+             : meeting.status === 'failed' ? (meeting.fail_reason || '文档解析失败，请重试')
+             : '点击下方按钮生成会议纪要' }}
+        </div>
+        <el-button v-if="meeting.status === 'processing'" type="primary" loading @click="loadData">刷新</el-button>
+        <el-button v-else-if="meeting.status === 'failed'" type="danger" :loading="regenerating" @click="handleRegenerate">重新生成</el-button>
+        <el-button v-else type="primary" :loading="regenerating" @click="handleRegenerate">生成纪要</el-button>
       </div>
     </div>
 
-    <!-- ====== 搴曢儴鎿嶄綔鏍?====== -->
+    <!-- ====== 底部操作栏 ====== -->
     <div class="detail-footer card" v-if="summary">
-      <el-button @click="$router.push('/meeting')">杩斿洖</el-button>
+      <el-button @click="$router.push('/meeting')">返回</el-button>
       <el-button type="primary" @click="handleExport">
-        瀵煎嚭绾
+        导出纪要
       </el-button>
     </div>
+    <!-- ====== 转任务弹窗：选择执行人 ====== -->
+    <el-dialog v-model="convertVisible" title="转为任务" width="460px">
+      <div class="convert-tip">{{ convertingAction?.content }}</div>
+      <el-form label-width="72px">
+        <el-form-item label="执行人" required>
+          <el-select
+            v-model="convertAssigneeId"
+            placeholder="请选择任务执行人"
+            filterable
+            style="width: 100%"
+            :loading="userOptionsLoading"
+          >
+            <el-option
+              v-for="u in userOptions"
+              :key="u.id"
+              :label="optionLabel(u)"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="convertVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :disabled="!convertAssigneeId"
+          :loading="converting"
+          @click="confirmConvert"
+        >
+          转为任务
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getMeeting, getSummary, getActions, generateSummary, updateAction } from '../../api/meeting.js'
+import { getMeeting, getSummary, getActions, generateSummary } from '../../api/meeting.js'
+import { convertFromAction } from '../../api/task.js'
+import { getUserOptions } from '../../api/index.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -154,7 +195,10 @@ const actions = ref([])
 const loading = ref(true)
 const regenerating = ref(false)
 
+let pollTimer = null
+
 onMounted(() => loadData())
+onUnmounted(() => stopPoll())
 
 async function loadData() {
   loading.value = true
@@ -165,36 +209,112 @@ async function loadData() {
       getActions(meetingId)
     ])
     if (m.status === 'fulfilled') meeting.value = m.value
-    if (s.status === 'fulfilled') summary.value = s.value
+    if (s.status === 'fulfilled') {
+      // 纪要未生成时后端返回占位体（status=processing/empty），前端据此展示对应占位态而非空纪要
+      const sv = s.value
+      summary.value = sv && (sv.status === 'processing' || sv.status === 'empty') ? null : sv
+    }
     if (a.status === 'fulfilled') actions.value = a.value
   } finally {
     loading.value = false
   }
+  // 纪要生成中：每 3 秒轮询直到 completed/failed
+  if (meeting.value.status === 'processing') startPoll()
+}
+
+/** 轮询会议状态（AI 生成纪要中） */
+function startPoll() {
+  if (pollTimer) return
+  pollTimer = setInterval(async () => {
+    try {
+      const m = await getMeeting(meetingId)
+      meeting.value = m
+      if (m.status !== 'processing') {
+        stopPoll()
+        await loadData()
+        if (m.status === 'completed') ElMessage.success('会议纪要生成完成')
+        else if (m.status === 'failed') ElMessage.warning('纪要生成失败，可重试')
+      }
+    } catch (e) { /* 轮询瞬时失败忽略 */ }
+  }, 3000)
+}
+
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 }
 
 async function handleRegenerate() {
   regenerating.value = true
   try {
-    await generateSummary(meetingId)
-    ElMessage.success('纪要已重新生成')
-    await loadData()
+    const record = await generateSummary(meetingId)
+    meeting.value = { ...meeting.value, ...record }
+    if (record.status === 'processing') {
+      ElMessage.info('AI 正在生成纪要，请稍候…')
+      startPoll()
+    } else {
+      await loadData()
+    }
   } catch (e) {
-    ElMessage.error('鐢熸垚澶辫触锛岃绋嶅悗閲嶈瘯')
+    ElMessage.error('生成失败，请稍后重试')
   } finally {
     regenerating.value = false
   }
 }
 
-const STATUS_CYCLE = { pending: 'in_progress', in_progress: 'completed', completed: 'pending' }
+/** 待办状态只读展示（状态单源在任务看板，改状态请到任务看板操作，会反向同步回待办） */
+const ACTION_STATUS_TEXT = { pending: '未开始', in_progress: '进行中', completed: '已完成' }
 
-async function toggleAction(a) {
-  const next = STATUS_CYCLE[a.status] || 'pending'
+/* ====== 转任务弹窗：选择执行人 ====== */
+const convertVisible = ref(false)
+const convertingAction = ref(null)
+const convertAssigneeId = ref(null)
+const converting = ref(false)
+const userOptions = ref([])
+const userOptionsLoading = ref(false)
+
+const ROLE_LABEL = { ADMIN: '管理员', DEPT_MANAGER: '部门负责人', EMPLOYEE: '员工', KB_ADMIN: '知识管理员' }
+function optionLabel(u) {
+  const role = (u.roles || []).map(r => ROLE_LABEL[r] || r).join('/')
+  return role ? `${u.real_name}（${role}）` : u.real_name
+}
+
+/** 打开弹窗：预填纪要识别出的匹配执行人（assignee_id），无匹配则不预选 */
+async function handleConvert(a) {
+  convertingAction.value = a
+  convertAssigneeId.value = a.assignee_id || null
+  convertVisible.value = true
+  if (!userOptions.value.length) {
+    userOptionsLoading.value = true
+    try {
+      userOptions.value = await getUserOptions()
+      // 预填的匹配人若不在可选列表中，则取消预选
+      if (convertAssigneeId.value && !userOptions.value.some(u => u.id === convertAssigneeId.value)) {
+        convertAssigneeId.value = null
+      }
+    } catch (e) {
+      // 拦截器已提示错误
+    } finally {
+      userOptionsLoading.value = false
+    }
+  }
+}
+
+/** 确认转任务（必选执行人后才可提交） */
+async function confirmConvert() {
+  if (!convertAssigneeId.value) {
+    ElMessage.warning('请先选择任务执行人')
+    return
+  }
+  converting.value = true
   try {
-    await updateAction(a.id, { status: next })
-    a.status = next
-    ElMessage.success(next === 'completed' ? '已完成' : next === 'in_progress' ? '进行中' : '已重置')
+    await convertFromAction(convertingAction.value.id, convertAssigneeId.value)
+    ElMessage.success('已转为任务，可在任务看板查看')
+    convertVisible.value = false
+    actions.value = await getActions(meetingId)
   } catch (e) {
-    // 蹇界暐
+    // 拦截器已提示错误
+  } finally {
+    converting.value = false
   }
 }
 
@@ -209,12 +329,12 @@ async function handleExport() {
     await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
     ElMessage.success('纪要已复制到剪贴板')
   } catch (e) {
-    ElMessage.error('澶嶅埗澶辫触锛岃鎵嬪姩瀵煎嚭')
+    ElMessage.error('复制失败，请手动导出')
   }
 }
 
 const STATUS_MAP = { pending: '待处理', processing: '处理中', completed: '已完成', failed: '失败' }
-const SOURCE_MAP = { text: '鏂囨湰杈撳叆', audio: '闊抽涓婁紶' }
+const SOURCE_MAP = { text: '文本输入', audio: '音频上传' }
 
 function statusText(s) { return STATUS_MAP[s] || s }
 function sourceText(s) { return SOURCE_MAP[s] || s }
@@ -237,7 +357,7 @@ function formatDate(t) {
 <style scoped>
 .meeting-detail { max-width: 1200px; margin: 0 auto; }
 
-/* ====== 椤堕儴 ====== */
+/* ====== 顶部 ====== */
 .detail-header {
   display: flex;
   justify-content: space-between;
@@ -282,7 +402,7 @@ function formatDate(t) {
   border-radius: 999px;
 }
 
-/* 鐘舵€佹爣绛?*/
+/* 状态标签 */
 .status-tag {
   display: inline-flex;
   align-items: center;
@@ -304,12 +424,12 @@ function formatDate(t) {
 .status-tag.pending .status-dot { background: var(--text-tertiary); }
 .status-tag.processing {
   color: var(--accent);
-  border-color: rgba(77, 141, 255, 0.3);
-  background: rgba(77, 141, 255, 0.08);
+  border-color: rgba(8, 180, 188, 0.3);
+  background: rgba(8, 180, 188, 0.08);
 }
 .status-tag.processing .status-dot {
   background: var(--accent);
-  box-shadow: 0 0 6px rgba(77, 141, 255, 0.9);
+  box-shadow: 0 0 6px rgba(8, 180, 188, 0.9);
   animation: breathe 1.8s ease-in-out infinite;
 }
 @keyframes breathe {
@@ -329,7 +449,7 @@ function formatDate(t) {
 }
 .status-tag.failed .status-dot { background: #f56c6c; box-shadow: 0 0 6px rgba(245, 108, 108, 0.9); }
 
-/* ====== 涓ゆ爮甯冨眬 ====== */
+/* ====== 两栏布局 ====== */
 .detail-body {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -337,7 +457,7 @@ function formatDate(t) {
   margin-bottom: 18px;
 }
 
-/* 绾鍗＄墖 */
+/* 纪要卡片 */
 .summary-card { padding: 24px 28px; }
 .section-title {
   display: flex;
@@ -372,7 +492,7 @@ function formatDate(t) {
   background: var(--accent-soft);
   padding: 4px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(77, 141, 255, 0.2);
+  border: 1px solid rgba(8, 180, 188, 0.2);
 }
 
 .topic-list {
@@ -405,7 +525,7 @@ function formatDate(t) {
   margin-top: 3px;
 }
 
-/* 鍘熷鏂囨湰 */
+/* 原始文本 */
 .raw-card { padding: 0; }
 .raw-card :deep(.el-collapse) {
   border: none;
@@ -435,7 +555,7 @@ function formatDate(t) {
   overflow-y: auto;
 }
 
-/* ====== 鍙充晶寰呭姙 ====== */
+/* ====== 右侧待办 ====== */
 .actions-card { padding: 22px 20px; }
 .action-count {
   font-size: 11.5px;
@@ -461,27 +581,28 @@ function formatDate(t) {
   color: var(--text-tertiary);
 }
 
-.action-check { cursor: pointer; flex-shrink: 0; margin-top: 2px; }
-.check-box {
-  width: 20px; height: 20px;
-  border-radius: 6px;
-  border: 1.5px solid var(--border-strong);
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s ease;
+/* 待办状态标签（只读，状态单源在任务看板） */
+.action-status {
+  flex-shrink: 0;
+  margin-top: 2px;
   font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
 }
-.check-box.pending { border-color: var(--border-strong); }
-.check-box.in_progress {
-  border-color: var(--accent);
-  background: rgba(77, 141, 255, 0.15);
+.action-status.in_progress {
   color: var(--accent);
+  border-color: rgba(8, 180, 188, 0.3);
+  background: rgba(8, 180, 188, 0.1);
 }
-.check-box.completed {
-  border-color: #34D399;
-  background: rgba(52, 211, 153, 0.2);
+.action-status.completed {
   color: #34D399;
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.1);
 }
-.check-icon { font-size: 11px; line-height: 1; }
 
 .action-content { flex: 1; min-width: 0; }
 .action-text {
@@ -498,11 +619,11 @@ function formatDate(t) {
 }
 .assignee-tag {
   font-size: 11px;
-  color: var(--accent-2);
-  background: rgba(139, 92, 246, 0.12);
+  color: var(--accent);
+  background: rgba(8, 180, 188, 0.12);
   padding: 2px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(8, 180, 188, 0.25);
 }
 .deadline-tag {
   font-size: 11px;
@@ -513,6 +634,23 @@ function formatDate(t) {
   border: 1px solid var(--border-light);
 }
 
+.convert-btn {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(8, 180, 188, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.convert-btn:hover { filter: brightness(1.1); }
+.linked-task {
+  font-size: 11px;
+  color: #10B981;
+  padding: 2px 4px;
+}
+
 .empty-hint {
   padding: 28px 0;
   text-align: center;
@@ -520,7 +658,7 @@ function formatDate(t) {
   font-size: 13px;
 }
 
-/* ====== 鏈敓鎴愮姸鎬?====== */
+/* ====== 未生成状态 ====== */
 .no-summary {
   text-align: center;
   padding: 60px 20px;
@@ -545,14 +683,44 @@ function formatDate(t) {
   font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 18px;
+  word-break: break-word;
 }
 
-/* ====== 搴曢儴鎿嶄綔鏍?====== */
+/* 纪要生成失败态（红色提示） */
+.no-summary.is-failed .no-summary-icon { color: #f56c6c; animation: none; }
+.no-summary.is-failed .no-summary-title { color: #f56c6c; }
+.no-summary.is-failed .no-summary-desc { color: rgba(245, 108, 108, 0.85); }
+
+/* 演示模式标记（Mock 兜底纪要明示） */
+.mock-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: #E6A23C;
+  background: rgba(230, 162, 60, 0.12);
+  border: 1px solid rgba(230, 162, 60, 0.3);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* ====== 底部操作栏 ====== */
 .detail-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   padding: 14px 20px;
+}
+
+/* 转任务弹窗 */
+.convert-tip {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  line-height: 1.6;
 }
 
 @media (max-width: 900px) {

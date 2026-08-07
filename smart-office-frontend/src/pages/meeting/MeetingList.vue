@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div class="meeting-list">
-    <!-- ====== Hero 鍖?====== -->
+    <!-- ====== Hero 区域 ====== -->
     <div class="hero card">
       <div class="hero-orb hero-orb-1"></div>
       <div class="hero-orb hero-orb-2"></div>
@@ -8,15 +8,15 @@
 
       <div class="hero-main">
         <h1 class="hero-title">
-          鏅鸿兘<span class="grad-text">浼氳</span>
+          智能<span class="grad-text">会议</span>
         </h1>
         <p class="hero-sub">
-          AI 椹卞姩鐨勪細璁邯瑕佺敓鎴愶紝浠庤浆鍐欐枃鏈埌缁撴瀯鍖栫邯瑕侊紝涓€閿畬鎴?
+          AI 驱动的会议纪要生成，从转写文本到结构化纪要，一键完成
         </p>
 
         <div class="hero-actions">
           <button class="hero-btn primary" @click="$router.push('/meeting/create')">
-            <span class="btn-icon"></span> 鏂板缓浼氳
+            <span class="btn-icon">＋</span> 新建会议
           </button>
         </div>
       </div>
@@ -24,17 +24,17 @@
       <div class="hero-stats">
         <div class="hero-stat">
           <div class="stat-num grad-text">{{ meetings.length }}</div>
-          <div class="stat-label">浼氳鎬绘暟</div>
+          <div class="stat-label">会议总数</div>
         </div>
         <div class="hero-stat-divider"></div>
         <div class="hero-stat">
           <div class="stat-num grad-text">{{ completedCount }}</div>
-          <div class="stat-label">宸插</div>
+          <div class="stat-label">已完成</div>
         </div>
       </div>
     </div>
 
-    <!-- ====== 浼氳鍗＄墖缃戞牸 ====== -->
+    <!-- ====== 会议卡片网格 ====== -->
     <div v-if="loading" class="meeting-grid">
       <div v-for="i in 6" :key="i" class="meeting-card card skeleton-card">
         <div class="skeleton-line w60"></div>
@@ -45,11 +45,11 @@
     </div>
 
     <div v-else-if="meetings.length === 0" class="empty-state">
-      <div class="empty-icon"></div>
-      <div class="empty-title">鏆傛棤浼氳璁板綍</div>
-      <div class="empty-desc">涓婁紶浼氳杞啓鏂囨湰鎴栭煶棰戯紝AI 灏嗚嚜鍔ㄧ敓鎴愮粨鏋勫寲绾</div>
+      <div class="empty-icon">📄</div>
+      <div class="empty-title">暂无会议记录</div>
+      <div class="empty-desc">上传会议转写文本或音频，AI 将自动生成结构化纪要</div>
       <button class="hero-btn primary" @click="$router.push('/meeting/create')">
-        鍒涘缓绗竴娆′細璁?
+        创建第一次会议
       </button>
     </div>
 
@@ -63,11 +63,11 @@
         <div class="card-top">
           <div class="card-title">{{ m.title }}</div>
           <el-dropdown trigger="click" @command="handleCommand($event, m)" @click.stop>
-            <span class="card-more" @click.stop></span>
+            <span class="card-more" @click.stop>⋯</span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="delete">
-                  <span style="color: #f56c6c">鍒犻櫎</span>
+                  <span style="color: #f56c6c">删除</span>
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -107,7 +107,7 @@ async function load() {
   try {
     meetings.value = await getMeetings()
   } catch (e) {
-    // 蹇界暐
+    // 忽略
   } finally {
     loading.value = false
   }
@@ -121,8 +121,8 @@ async function handleCommand(cmd, m) {
   if (cmd === 'delete') {
     await ElMessageBox.confirm(`确定删除会议《${m.title}》吗？删除后不可恢复。`, '提示', {
       type: 'warning',
-      confirmButtonText: '鍒犻櫎',
-      cancelButtonText: '鍙栨秷'
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
     })
     await deleteMeeting(m.id)
     ElMessage.success('已删除')
@@ -134,12 +134,12 @@ const STATUS_MAP = {
   pending: '待处理',
   processing: '处理中',
   completed: '已完成',
-  failed: '澶辫触'
+  failed: '失败'
 }
 
 const SOURCE_MAP = {
-  text: '鏂囨湰杈撳叆',
-  audio: '闊抽涓婁紶'
+  text: '文本输入',
+  audio: '音频上传'
 }
 
 function statusText(s) {
@@ -182,13 +182,13 @@ function formatTime(t) {
 }
 .hero-orb-1 {
   width: 300px; height: 220px;
-  background: rgba(77, 141, 255, 0.22);
+  background: rgba(8, 180, 188, 0.22);
   top: -80px; right: 10%;
   animation: drift 14s ease-in-out infinite alternate;
 }
 .hero-orb-2 {
   width: 220px; height: 180px;
-  background: rgba(139, 92, 246, 0.16);
+  background: rgba(4, 126, 133, 0.16);
   bottom: -70px; left: 22%;
   animation: drift 18s ease-in-out infinite alternate-reverse;
 }
@@ -253,7 +253,7 @@ function formatTime(t) {
 .stat-label { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
 .hero-stat-divider { width: 1px; height: 34px; background: var(--border); }
 
-/* ====== 浼氳鍗＄墖缃戞牸 ====== */
+/* ====== 会议卡片网格 ====== */
 .meeting-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -326,7 +326,7 @@ function formatTime(t) {
   justify-content: space-between;
 }
 
-/* 鐘舵€佹爣绛?*/
+/* 状态标签 */
 .status-tag {
   display: inline-flex;
   align-items: center;
@@ -349,12 +349,12 @@ function formatTime(t) {
 
 .status-tag.processing {
   color: var(--accent);
-  border-color: rgba(77, 141, 255, 0.3);
-  background: rgba(77, 141, 255, 0.08);
+  border-color: rgba(8, 180, 188, 0.3);
+  background: rgba(8, 180, 188, 0.08);
 }
 .status-tag.processing .status-dot {
   background: var(--accent);
-  box-shadow: 0 0 6px rgba(77, 141, 255, 0.9);
+  box-shadow: 0 0 6px rgba(8, 180, 188, 0.9);
   animation: breathe 1.8s ease-in-out infinite;
 }
 @keyframes breathe {
@@ -381,7 +381,7 @@ function formatTime(t) {
   color: var(--text-tertiary);
 }
 
-/* ====== 绌虹姸鎬?====== */
+/* ====== 空状态 ====== */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -412,7 +412,7 @@ function formatTime(t) {
   margin-bottom: 22px;
 }
 
-/* ====== 楠ㄦ灦灞?====== */
+/* ====== 骨架屏 ====== */
 .skeleton-card { pointer-events: none; }
 .skeleton-line {
   height: 14px;

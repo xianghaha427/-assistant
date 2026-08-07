@@ -2,6 +2,7 @@ package com.finoffice.controller;
 
 import com.finoffice.common.R;
 import com.finoffice.entity.AgentConfig;
+import com.finoffice.service.AdminService;
 import com.finoffice.service.AgentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,7 @@ import java.util.List;
 public class AgentController {
 
     private final AgentService agentService;
+    private final AdminService adminService;
 
     @GetMapping
     public R<List<AgentConfig>> list() {
@@ -25,17 +27,20 @@ public class AgentController {
 
     @PostMapping
     public R<AgentConfig> create(@RequestBody AgentConfig agent) {
+        adminService.checkAdmin();
         return R.ok(agentService.create(agent));
     }
 
     @PutMapping("/{id}")
     public R<Void> update(@PathVariable Long id, @RequestBody AgentConfig agent) {
+        adminService.checkAdmin();
         agentService.update(id, agent);
         return R.ok();
     }
 
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
+        adminService.checkAdmin();
         agentService.delete(id);
         return R.ok();
     }

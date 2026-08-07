@@ -18,3 +18,5 @@ Thumbs.db
 
 # Uploads
 smart-office-backend/uploads/
+# Runtime logs
+smart-office-backend/logs/

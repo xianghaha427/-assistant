@@ -45,6 +45,7 @@ public class UserService {
         result.setUsername(user.getUsername());
         result.setRealName(user.getRealName());
         result.setDeptName(deptName(user.getDeptId()));
+        result.setRoles(roleMapper.selectRoleCodesByUserId(user.getId()));
         return result;
     }
 

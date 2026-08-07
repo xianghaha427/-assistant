@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.finoffice.common.BizException;
 import com.finoffice.common.R;
 import com.finoffice.config.DeepSeekConfig;
+import com.finoffice.config.SseHeartbeat;
 import com.finoffice.entity.AgentConfig;
 import com.finoffice.entity.AiMessage;
 import com.finoffice.entity.AiSession;
@@ -11,6 +12,7 @@ import com.finoffice.mapper.AgentConfigMapper;
 import com.finoffice.service.AiSessionService;
 import com.finoffice.service.DeepSeekService;
 import com.finoffice.service.DifyService;
+import jakarta.annotation.Resource;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +23,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * AI 会话接口
@@ -38,7 +39,11 @@ public class AiController {
     private final DifyService difyService;
     private final DeepSeekConfig deepSeekConfig;
     private final AgentConfigMapper agentConfigMapper;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final SseHeartbeat heartbeat;
+
+    /** 共享有界线程池（AsyncConfig#aiSseExecutor），替换原无界 Executors.newCachedThreadPool() */
+    @Resource(name = "aiSseExecutor")
+    private ExecutorService executor;
 
     @Value("${dify.base-url:}")
     private String difyBaseUrl;
@@ -63,11 +68,11 @@ public class AiController {
         return R.ok(aiSessionService.createSession(userId, req.getAgentId(), req.getTitle()));
     }
 
-    /** 我的会话列表 */
+    /** 我的会话列表（可选 agentId 过滤，如行业洞察页只列本智能体会话） */
     @GetMapping("/sessions")
-    public R<List<AiSession>> listSessions() {
+    public R<List<AiSession>> listSessions(@RequestParam(required = false) Long agentId) {
         long userId = StpUtil.getLoginIdAsLong();
-        return R.ok(aiSessionService.listByUser(userId));
+        return R.ok(aiSessionService.listByUser(userId, agentId));
     }
 
     /** 会话历史消息 */
@@ -97,14 +102,21 @@ public class AiController {
         }
 
         // 未传会话则自动创建
-        Long sessionId = aiSessionService.getOrCreateSession(userId, req.getSessionId(), req.getMessage());
+        Long sessionId = aiSessionService.getOrCreateSession(userId, req.getSessionId(), req.getAgentId(), req.getMessage());
 
         // 保存用户消息
         aiSessionService.saveMessage(sessionId, "user", req.getMessage());
 
         final Long sid = sessionId;
 
-        SseEmitter emitter = new SseEmitter(60_000L);
+        // 查询智能体配置（提前查询，workflow 型应用调用耗时较长，需放宽 SSE 超时）
+        final AgentConfig agent = req.getAgentId() != null
+                ? agentConfigMapper.selectById(req.getAgentId()) : null;
+        boolean isWorkflow = agent != null && "workflow".equalsIgnoreCase(agent.getDifyMode());
+
+        SseEmitter emitter = new SseEmitter(isWorkflow ? 200_000L : 60_000L);
+        // 统一注册 onTimeout/onError/onCompletion 清理 + 15s 心跳（:ping）
+        heartbeat.attach(emitter);
         try {
             // 首帧返回 sessionId，便于前端绑定会话
             emitter.send(SseEmitter.event().name("session").data(sid));
@@ -112,13 +124,14 @@ public class AiController {
             throw new BizException("SSE 初始化失败");
         }
 
-        // 查询智能体配置
-        final AgentConfig agent = req.getAgentId() != null
-                ? agentConfigMapper.selectById(req.getAgentId()) : null;
-
         // 优先级1：Agent 配置了 difyAppId 且 difyBaseUrl 有效 → 调用 Dify
         if (agent != null && agent.getDifyAppId() != null && !agent.getDifyAppId().isBlank()
                 && difyBaseUrl != null && !difyBaseUrl.isBlank()) {
+            // workflow 型应用（如会议纪要助手）：blocking 调用，结果整体作为一个 message 块发出
+            if ("workflow".equalsIgnoreCase(agent.getDifyMode())) {
+                runDifyWorkflow(emitter, sid, req, agent, userId);
+                return emitter;
+            }
             // 获取当前会话的 difyConversationId（用于多轮上下文）
             AiSession session = aiSessionService.getSessionById(sid);
             String difyConvId = session != null ? session.getDifyConversationId() : null;
@@ -185,6 +198,33 @@ public class AiController {
         return emitter;
     }
 
+    /**
+     * 调用 Dify Workflow 型应用（blocking 模式），结果一次性作为一个 message 块发出，
+     * 失败时复用现有 DeepSeek/Mock 降级框架
+     */
+    private void runDifyWorkflow(SseEmitter emitter, Long sid, ChatReq req, AgentConfig agent, long userId) {
+        final String difyAppApiKey = agent.getDifyAppId();
+        executor.submit(() -> {
+            try {
+                String inputVar = agent.getInputVariable();
+                if (inputVar == null || inputVar.isBlank()) {
+                    inputVar = "input";
+                }
+                String result = difyService.runWorkflow(difyAppApiKey, java.util.Map.of(inputVar, req.getMessage()), userId);
+                aiSessionService.saveMessage(sid, "assistant", result);
+                aiSessionService.incrementMsgCount(sid, 2);
+                emitter.send(SseEmitter.event().name("message").data(result));
+                emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                emitter.complete();
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+            } catch (Exception e) {
+                // Dify Workflow 调用失败，降级到 DeepSeek
+                log.warn("Dify Workflow 调用失败，降级到 DeepSeek: {}", e.getMessage());
+                fallbackToDeepSeek(emitter, sid, req, agent);
+            }
+        });
+    }
     /**
      * 降级到 DeepSeek 直连
      */

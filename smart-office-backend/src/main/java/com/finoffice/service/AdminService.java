@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.finoffice.common.BizException;
+import com.finoffice.common.OpLogger;
 import com.finoffice.entity.SysDept;
 import com.finoffice.entity.SysLog;
 import com.finoffice.entity.SysRole;
@@ -98,6 +99,7 @@ public class AdminService {
         user.setDeleted(0);
         userMapper.insert(user);
         assignRoles(user.getId(), roleCodes);
+        OpLogger.log(StpUtil.getLoginIdAsLong(), "USER", "创建用户", "创建用户 " + username);
     }
 
     /** 更新用户 */
@@ -114,6 +116,7 @@ public class AdminService {
         if (roleCodes != null) {
             assignRoles(id, roleCodes);
         }
+        OpLogger.log(StpUtil.getLoginIdAsLong(), "USER", "更新用户", "更新用户ID " + id);
     }
 
     /** 删除用户（软删除） */
@@ -124,6 +127,7 @@ public class AdminService {
         }
         user.setDeleted(1);
         userMapper.updateById(user);
+        OpLogger.log(StpUtil.getLoginIdAsLong(), "USER", "删除用户", "删除用户 " + user.getUsername());
     }
 
     /** 角色列表 */

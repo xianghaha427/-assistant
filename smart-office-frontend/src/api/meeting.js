@@ -7,8 +7,7 @@ import {
   generateMeetingSummary as _generateMeetingSummary,
   getMeetingSummary as _getMeetingSummary,
   getMeetingActions as _getMeetingActions,
-  updateActionStatus as _updateActionStatus,
-  uploadMeetingAudio as _uploadMeetingAudio
+  uploadMeetingFile as _uploadMeetingFile
 } from './index.js'
 
 // 新名称
@@ -20,8 +19,7 @@ export {
   _generateMeetingSummary as generateMeetingSummary,
   _getMeetingSummary as getMeetingSummary,
   _getMeetingActions as getMeetingActions,
-  _updateActionStatus as updateActionStatus,
-  _uploadMeetingAudio as uploadMeetingAudio
+  _uploadMeetingFile as uploadMeetingFile
 }
 
 // 旧名称（兼容页面组件）
@@ -29,6 +27,5 @@ export {
   _generateMeetingSummary as generateSummary,
   _getMeetingSummary as getSummary,
   _getMeetingActions as getActions,
-  _updateActionStatus as updateAction,
-  _uploadMeetingAudio as uploadAudio
+  _uploadMeetingFile as uploadFile
 }

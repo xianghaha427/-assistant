@@ -1,6 +1,11 @@
 server:
   port: 8080
 
+# 日志落文件便于排障（相对路径 logs/app.log，随启动目录生成）
+logging:
+  file:
+    name: logs/app.log
+
 spring:
   application:
     name: smart-office-backend
@@ -15,7 +20,7 @@ spring:
       schema-locations: classpath:schema.sql
       encoding: UTF-8
   jackson:
-    # 实体驼峰字段统一以 snake_case 输出，与前端字段约定保持一致
+    # 实体类字段统一以 snake_case 输出，与前端字段约定保持一致
     property-naming-strategy: SNAKE_CASE
 
 # MyBatis-Plus 配置
@@ -39,18 +44,25 @@ sa-token:
   is-read-header: true
   token-prefix: Bearer
 
-# Dify 集成配置
+# Dify 云端配置（密钥存于数据库 agent_config.dify_app_id，不落代码文件）
 dify:
   enabled: true
-  base-url: http://localhost/v1
+  base-url: https://api.dify.ai/v1
   api-key: ""
 
-# DeepSeek 直连兜底配置（Dify 不可用时降级使用）
+# DeepSeek 直连配置（三级降级第2级，Dify 不可用时启用）
+# 密钥说明：git 全历史中从未配置过真实 key（自首个提交起 api-key 即为空）。
+#   需用户自行前往 https://platform.deepseek.com/api_keys 创建密钥后填入下方 api-key；
+#   为空时该级降级将 401 失败并自动落入第3级 Mock，不影响主流程。
 deepseek:
-  api-key: ""
+  api-key: ""   # TODO 待用户提供：sk-xxxxxxxx（仓库历史无原 key）
   base-url: https://api.deepseek.com
   model: deepseek-chat
   enabled: true
+
+# 文件上传目录
+app:
+  upload-path: ./uploads
 
 dingtalk:
   enabled: false

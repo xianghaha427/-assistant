@@ -1,12 +1,22 @@
-# FinPilot - 企业知识问答助手 DSL
-# 用途：企业制度/流程/规范的知识问答
-# 类型：Chatflow（对话型工作流）
-# 工作流：开始 → 知识检索（Knowledge Retrieval）→ LLM → 结束
-# 导入方式：Dify 工作室 → 创建应用 → 导入 DSL 文件
-# 注意：导入后需在知识检索节点中配置实际的知识库
+# =====================================================================
+# FinPilot - 企业知识问答助手 DSL（完整多节点 ChatFlow 编排版）
+# 用途：金融企业员工内部知识问答，覆盖公司制度、流程规范、业务操作等场景
+# 类型：Chatflow（advanced-chat 对话型工作流），目标平台 Dify 1.16.1
+# 底层模型：deepseek-chat（provider: deepseek）
+#
+# 工作流结构：
+#   开始(sys.query) -> 代码执行[意图识别] -> 条件分支1
+#     |- 打招呼/转人工 -> 直接回复[固定应答] (终端)
+#     +- 需要知识问答 -> 知识检索 -> 条件分支2
+#           |- 检索结果非空 -> LLM[RAG回答] -> 直接回复 (终端)
+#           +- 检索结果为空 -> LLM[闲聊兜底回答] -> 直接回复 (终端)
+#
+# 导入方式：Dify 工作室 -> 创建应用 -> 导入 DSL 文件
+# 重要：导入后必须在「知识检索」节点中绑定实际的企业知识库
+# =====================================================================
 app:
   description: >-
-    FinPilot 企业知识问答助手，专为金融企业员工提供企业内部制度、流程、规范等方面的问答服务。基于企业知识库进行精准回答。
+    FinPilot 企业知识问答助手，专为金融企业员工提供公司制度、流程规范、业务操作等方面的智能问答服务。内置意图识别（打招呼/转人工/知识问答），基于企业知识库进行 RAG 精准回答，知识库未命中时提供闲聊兜底。
   icon: "📚"
   icon_background: '#E4FBCC'
   mode: advanced-chat
@@ -32,7 +42,7 @@ workflow:
         transfer_methods:
           - local_file
           - remote_url
-    opening_statement: 您好！我是 FinPilot 企业知识问答助手，可以为您解答企业内部制度、流程、规范等方面的问题。请问有什么可以帮您？
+    opening_statement: 您好！我是 FinPilot 企业知识问答助手，可以为您解答公司制度、流程规范、业务操作等问题。请问有什么可以帮您？
     retriever_resource:
       enabled: true
     sensitive_word_avoidance:
@@ -54,41 +64,105 @@ workflow:
       - data:
           isInIteration: false
           sourceType: start
-          targetType: knowledge-retrieval
-        id: edge-start-to-knowledge
-        source: node-start
+          targetType: code
+        id: edge-start-to-intent
+        source: '1754400000001'
         sourceHandle: source
-        target: node-knowledge-retrieval
+        target: '1754400000002'
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: if-else
+        id: edge-intent-to-branch1
+        source: '1754400000002'
+        sourceHandle: source
+        target: '1754400000003'
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceHandle: 'true'
+          sourceType: if-else
+          targetType: answer
+        id: edge-branch1-case1-to-fixed-answer
+        source: '1754400000003'
+        sourceHandle: 'true'
+        target: '1754400000004'
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceHandle: 'false'
+          sourceType: if-else
+          targetType: knowledge-retrieval
+        id: edge-branch1-default-to-retrieval
+        source: '1754400000003'
+        sourceHandle: 'false'
+        target: '1754400000005'
         targetHandle: target
         type: custom
       - data:
           isInIteration: false
           sourceType: knowledge-retrieval
-          targetType: llm
-        id: edge-knowledge-to-llm
-        source: node-knowledge-retrieval
+          targetType: if-else
+        id: edge-retrieval-to-branch2
+        source: '1754400000005'
         sourceHandle: source
-        target: node-llm
+        target: '1754400000006'
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceHandle: 'true'
+          sourceType: if-else
+          targetType: llm
+        id: edge-branch2-case1-to-rag
+        source: '1754400000006'
+        sourceHandle: 'true'
+        target: '1754400000007'
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceHandle: 'false'
+          sourceType: if-else
+          targetType: llm
+        id: edge-branch2-default-to-chitchat
+        source: '1754400000006'
+        sourceHandle: 'false'
+        target: '1754400000009'
         targetHandle: target
         type: custom
       - data:
           isInIteration: false
           sourceType: llm
-          targetType: end
-        id: edge-llm-to-end
-        source: node-llm
+          targetType: answer
+        id: edge-rag-to-answer
+        source: '1754400000007'
         sourceHandle: source
-        target: node-end
+        target: '1754400000010'
+        targetHandle: target
+        type: custom
+      - data:
+          isInIteration: false
+          sourceType: llm
+          targetType: answer
+        id: edge-chitchat-to-answer
+        source: '1754400000009'
+        sourceHandle: source
+        target: '1754400000011'
         targetHandle: target
         type: custom
     nodes:
       - data:
-          desc: 用户输入入口
+          desc: 用户输入入口，接收员工提问内容
           title: 开始
           type: start
           variables: []
         height: 54
-        id: node-start
+        id: '1754400000001'
         position:
           x: 80
           y: 282
@@ -97,23 +171,121 @@ workflow:
         type: custom
         width: 244
       - data:
-          dataset_ids: []
-          desc: 从企业知识库中检索相关制度、流程、规范内容
-          multiple_retrieval_config:
-            reranking_model:
-              reranking_provider_name: ''
-              reranking_model_name: ''
-            top_k: 5
-            score_threshold_enabled: false
-            score_threshold: 0.5
-          query_variable_selector:
-            - sys
-            - query
-          retrieval_mode: multiple
-          title: 知识检索
-          type: knowledge-retrieval
+          code: |
+            import random
+
+
+            def main(query: str) -> dict:
+                q = (query or "").strip().lower()
+
+                greeting_phrases = [
+                    "你好", "您好", "你好呀", "您好呀", "hi", "hello", "hey",
+                    "哈喽", "嗨", "早上好", "上午好", "中午好", "下午好", "晚上好",
+                    "早安", "午安", "晚安", "在吗", "在不在", "有人吗",
+                    "你是谁", "你叫什么", "你能干什么", "你会什么", "你能做什么",
+                    "你有什么功能", "你可以做什么", "介绍你自己", "介绍一下你自己",
+                    "自我介绍", "你是什么", "很高兴认识你", "初次见面",
+                    "你好啊", "您好啊", "你好你好", "hello你好", "hi你好",
+                    "在么", "请问在吗", "开始提问", "开始对话", "开始咨询",
+                    "我想提问", "我想咨询", "帮我个忙", "请帮我",
+                    "问一下", "请教一个问题", "能问个问题吗", "可以提问吗",
+                ]
+
+                thanks_phrases = [
+                    "谢谢", "感谢", "多谢", "太感谢了", "非常感谢", "十分感谢",
+                    "辛苦了", "谢啦", "3q", "thanks", "thank you", "thank",
+                    "麻烦你了", "帮大忙了", "帮了大忙", "回答得不错", "很有帮助",
+                ]
+                thanks_replies = [
+                    "不客气！很高兴能帮到您。如果还有关于公司制度或业务流程的问题，随时问我～",
+                    "您太客气了！为员工解答问题是 FinPilot 的职责，欢迎继续提问。",
+                    "不用谢！如果后续还有其他问题，随时找我。",
+                ]
+
+                farewell_phrases = [
+                    "再见", "拜拜", "拜拜啦", "下次见", "先这样", "就这样",
+                    "没别的了", "没有其他问题了", "我先忙了", "我去忙了",
+                    "下次再聊", "bye", "goodbye", "see you", "回见",
+                    "结束对话", "先不问了", "暂时没有了",
+                ]
+                farewell_replies = [
+                    "再见！祝您工作顺利，有问题随时回来找 FinPilot～",
+                    "拜拜！很高兴为您服务，期待下次再会。",
+                    "好的，祝您工作愉快！有需要随时召唤我。",
+                ]
+
+                human_service_phrases = [
+                    "转人工", "人工服务", "人工客服", "找人工", "我要人工",
+                    "找管理员", "联系管理员", "系统管理员",
+                    "联系IT支持", "IT支持", "it支持", "找IT", "找it", "技术部",
+                    "系统故障", "系统报错", "系统崩溃", "系统打不开", "登不上系统",
+                    "无法登录", "账号被锁", "重置密码", "找回密码",
+                    "投诉", "我要投诉", "意见反馈", "意见建议",
+                    "找领导", "找负责人", "找相关部门", "联系相关部门",
+                ]
+
+                greeting_response = (
+                    "您好！我是 FinPilot 企业知识助手，可以为您解答公司制度、"
+                    "流程规范、业务操作等问题。"
+                )
+                human_service_response = (
+                    "已为您转接人工服务通道，请联系行政部或 IT 支持（分机 8000）。"
+                )
+
+                if q in human_service_phrases or any(p in q for p in human_service_phrases):
+                    return {
+                        "type": "human_service",
+                        "response": human_service_response,
+                        "need_rag": False,
+                    }
+
+                if q in thanks_phrases or any(p in q for p in thanks_phrases):
+                    return {
+                        "type": "thanks",
+                        "response": random.choice(thanks_replies),
+                        "need_rag": False,
+                    }
+
+                if q in farewell_phrases or any(p in q for p in farewell_phrases):
+                    return {
+                        "type": "farewell",
+                        "response": random.choice(farewell_replies),
+                        "need_rag": False,
+                    }
+
+                if q in greeting_phrases or any(p in q for p in greeting_phrases):
+                    return {
+                        "type": "greeting",
+                        "response": greeting_response,
+                        "need_rag": False,
+                    }
+
+                return {
+                    "type": "rag_needed",
+                    "response": "",
+                    "need_rag": True,
+                }
+          code_language: python3
+          desc: 基于短语匹配的意图识别，区分打招呼/感谢/告别/转人工/知识问答
+          outputs:
+            need_rag:
+              children: null
+              type: boolean
+            response:
+              children: null
+              type: string
+            type:
+              children: null
+              type: string
+          title: 意图识别
+          type: code
+          variables:
+            - value_selector:
+                - sys
+                - query
+              variable: query
         height: 54
-        id: node-knowledge-retrieval
+        id: '1754400000002'
         position:
           x: 384
           y: 282
@@ -122,12 +294,102 @@ workflow:
         type: custom
         width: 244
       - data:
+          cases:
+            - case_id: 'true'
+              conditions:
+                - comparison_operator: in
+                  id: '1754400000012'
+                  value:
+                    - greeting
+                    - thanks
+                    - farewell
+                    - human_service
+                  varType: string
+                  variable_selector:
+                    - '1754400000002'
+                    - type
+              id: 'true'
+              logical_operator: and
+          desc: 打招呼/感谢/告别/转人工 -> 固定应答；其余 -> 知识检索
+          title: 条件分支1
+          type: if-else
+        height: 126
+        id: '1754400000003'
+        position:
+          x: 688
+          y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          answer: '{{#1754400000002.response#}}'
+          desc: 输出意图识别生成的固定应答话术
+          title: 固定应答
+          type: answer
+        height: 105
+        id: '1754400000004'
+        position:
+          x: 992
+          y: 120
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          dataset_ids: []
+          desc: 从企业知识库中检索相关制度、流程、规范内容（导入后请绑定知识库）
+          multiple_retrieval_config:
+            reranking_model: null
+            top_k: 4
+            score_threshold_enabled: false
+          query_variable_selector:
+            - sys
+            - query
+          retrieval_mode: multiple
+          title: 知识检索
+          type: knowledge-retrieval
+        height: 90
+        id: '1754400000005'
+        position:
+          x: 992
+          y: 380
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          cases:
+            - case_id: 'true'
+              conditions:
+                - comparison_operator: not empty
+                  id: '1754400000013'
+                  value: ''
+                  varType: array[object]
+                  variable_selector:
+                    - '1754400000005'
+                    - result
+              id: 'true'
+              logical_operator: and
+          desc: 检索结果非空 -> RAG 回答；检索结果为空 -> 闲聊兜底
+          title: 条件分支2
+          type: if-else
+        height: 126
+        id: '1754400000006'
+        position:
+          x: 1296
+          y: 380
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
           context:
             enabled: true
             variable_selector:
-              - node-knowledge-retrieval
+              - '1754400000005'
               - result
-          desc: 基于知识库检索结果回答用户问题
+          desc: 基于知识库检索结果进行 RAG 回答
           model:
             completion_params:
               temperature: 0.3
@@ -137,41 +399,120 @@ workflow:
             name: deepseek-chat
             provider: deepseek
           prompt_template:
-            - id: system-prompt
+            - id: '1754400000014'
               role: system
-              text: >-
-                你是 FinPilot 企业知识问答助手，专为金融企业员工提供企业内部制度、流程、规范等方面的问答服务。请基于知识库中的内容准确回答，如果知识库中没有相关信息，请明确告知用户。回答要简洁专业，必要时引用来源。
-            - id: user-prompt
+              text: |
+                # 角色
+                你是「FinPilot 企业知识助手」，服务于金融企业内部的员工知识问答场景，专业、严谨、友好，专注于解答公司制度、流程规范、业务操作等问题。
+
+                # 重要参数
+                知识库检索结果：{{#context#}}
+
+                # 技能
+                ## 技能1：基于上下文解答
+                严格依据上方知识库检索结果回答用户问题，答案必须有据可依。涉及制度条款、流程步骤、审批权限等关键信息时，优先直接引用原文要点。
+                示例：用户问「差旅报销标准是什么？」，你应回答「根据《差旅费管理办法》第X条，交通标准：高铁二等座、飞机经济舱……」，并注明制度名称。
+
+                ## 技能2：答案优化
+                将检索到的零散内容整理为结构化回答：优先使用分点、编号步骤或表格呈现，语言简洁专业，避免照搬大段原文。
+
+                ## 技能3：上下文不足时补齐
+                若检索结果仅能部分回答，可结合通用常识谨慎补充，但必须明确标注「以下为通用做法，请以公司正式制度为准」；完全无相关内容时，如实告知并建议联系归口部门，不得编造制度条款或具体数字。
+
+                ## 技能4：金融合规敏感处理
+                涉及薪酬明细、客户信息、账户数据、监管处罚等敏感内容时，仅提供制度层面的公开说明，提醒用户遵守保密义务，并引导其通过正式渠道（如行政部、IT 支持分机 8000）办理。
+
+                # 限制
+                - 仅回答与企业办公、制度流程相关的问题，无关话题礼貌拒绝；
+                - 不编造、不测，无法确认的信息明确说明；
+                - 回答末尾注明信息来源的制度文档名称（若检索结果中有）。
+            - id: '1754400000015'
               role: user
-              text: "以下是从企业知识库中检索到的相关内容：\n\n{{#context#}}\n\n用户问题：{{#sys.query#}}\n\n请基于以上知识库内容回答用户的问题。如果知识库中没有相关信息，请明确告知用户「抱歉，当前知识库中未找到相关信息，建议您联系相关部门获取准确信息。」"
+              text: |
+                用户输入问题：{{#sys.query#}}
           selected_features: []
-          title: LLM
+          title: RAG回答
           type: llm
           vision:
             enabled: false
         height: 98
-        id: node-llm
+        id: '1754400000007'
         position:
-          x: 688
+          x: 1600
           y: 282
         sourcePosition: right
         targetPosition: left
         type: custom
         width: 244
       - data:
-          desc: 输出AI回答
-          outputs:
-            - value_selector:
-                - node-llm
-                - text
-              variable: text
-          title: 结束
-          type: end
-        height: 90
-        id: node-end
+          context:
+            enabled: false
+            variable_selector: []
+          desc: 知识库未命中时的闲聊/通识兜底回答
+          model:
+            completion_params:
+              temperature: 0.7
+              top_p: 0.9
+              max_tokens: 1024
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          prompt_template:
+            - id: '1754400000016'
+              role: system
+              text: |
+                你是「FinPilot 企业办公助手」，服务于金融企业内部员工。
+
+                你的职责：
+                1. 对于办公通识类问题（如办公软件使用技巧、职场礼仪、通用名词解释、效率方法等），给出清晰、实用、可操作的回答；
+                2. 对于表述不明确或超出你掌握范围的问题，礼貌地请用户补充说明，或引导其联系相关部门（行政部 / IT 支持，分机 8000），不要生硬拒绝。
+
+                回答要求：
+                - 语气友好专业，条理清晰，适当使用分点；
+                - 回答结尾必须注明「以上答案仅供参考」；
+                - 禁止提及「知识库」「检索」「未检索到」等字样，不要向用户解释你的内部工作机制。
+            - id: '1754400000017'
+              role: user
+              text: |
+                用户问题：{{#sys.query#}}
+          selected_features: []
+          title: 闲聊兜底回答
+          type: llm
+          vision:
+            enabled: false
+        height: 98
+        id: '1754400000009'
         position:
-          x: 992
+          x: 1600
+          y: 480
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          answer: '{{#1754400000007.text#}}'
+          desc: 输出 RAG 回答内容
+          title: RAG回答输出
+          type: answer
+        height: 105
+        id: '1754400000010'
+        position:
+          x: 1904
           y: 282
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - data:
+          answer: '{{#1754400000009.text#}}'
+          desc: 输出闲聊兜底回答内容
+          title: 闲聊回答输出
+          type: answer
+        height: 105
+        id: '1754400000011'
+        position:
+          x: 1904
+          y: 480
         sourcePosition: right
         targetPosition: left
         type: custom

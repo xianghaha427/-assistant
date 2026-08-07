@@ -2,23 +2,21 @@ package com.finoffice.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.finoffice.common.BizException;
+import com.finoffice.common.OpLogger;
 import com.finoffice.common.R;
 import com.finoffice.dto.MeetingCreateReq;
 import com.finoffice.dto.MeetingSummaryResp;
 import com.finoffice.entity.MeetingActionItem;
 import com.finoffice.entity.MeetingRecord;
 import com.finoffice.service.MeetingService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.Map;
 
 /**
  * 智能会议接口
@@ -29,11 +27,7 @@ import java.util.UUID;
 public class MeetingController {
 
     private final MeetingService meetingService;
-
-    @Value("")
-    private String uploadPath;
-
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("mp3", "wav", "m4a");
+    private final ObjectMapper objectMapper;
 
     @PostMapping
     public R<MeetingRecord> create(@RequestBody MeetingCreateReq req) {
@@ -43,8 +37,8 @@ public class MeetingController {
 
     @GetMapping
     public R<List<MeetingRecord>> list() {
-        long userId = StpUtil.getLoginIdAsLong();
-        return R.ok(meetingService.listMeetings(userId));
+        // 登录校验由拦截器完成，数据范围由 DataScopeHelper 按角色限定
+        return R.ok(meetingService.listMeetings());
     }
 
     @GetMapping("/{id}")
@@ -60,11 +54,12 @@ public class MeetingController {
         return R.ok();
     }
 
-    /** 触发 AI 生成会议纪要 */
+    /** 触发 AI 生成会议纪要（可附 dify 文件ID；仅文件无文字时后端自动以「摘要」为 query） */
     @PostMapping("/{id}/summary")
-    public R<MeetingRecord> generateSummary(@PathVariable Long id) {
+    public R<MeetingRecord> generateSummary(@PathVariable Long id, @RequestBody(required = false) SummaryReq req) {
         long userId = StpUtil.getLoginIdAsLong();
-        return R.ok(meetingService.generateSummary(userId, id));
+        OpLogger.log(userId, "MEETING", "纪要生成触发", "会议ID " + id);
+        return R.ok(meetingService.generateSummary(userId, id, req != null ? req.getFileIds() : null));
     }
 
     /** 获取会议纪要（解析后的结构化数据） */
@@ -73,11 +68,15 @@ public class MeetingController {
         long userId = StpUtil.getLoginIdAsLong();
         MeetingRecord record = meetingService.getMeetingDetail(userId, id);
         if (record.getSummary() == null) {
-            throw new BizException("会议纪要尚未生成");
+            // 不抛异常：返回明确状态体（processing=生成中 / empty=尚未触发生成），
+            // 前端据此渲染占位状态，响应拦截器不再弹错
+            MeetingSummaryResp placeholder = new MeetingSummaryResp();
+            placeholder.setStatus("processing".equals(record.getStatus()) ? "processing" : "empty");
+            return R.ok(placeholder);
         }
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            MeetingSummaryResp resp = mapper.readValue(record.getSummary(), MeetingSummaryResp.class);
+            MeetingSummaryResp resp = objectMapper.readValue(record.getSummary(), MeetingSummaryResp.class);
+            resp.setStatus("completed");
             return R.ok(resp);
         } catch (Exception e) {
             throw new BizException("纪要解析失败");
@@ -93,51 +92,14 @@ public class MeetingController {
         return R.ok(meetingService.getActionItems(id));
     }
 
-    /** 更新待办状态 */
-    @PutMapping("/actions/{actionId}")
-    public R<Void> updateActionStatus(@PathVariable Long actionId, @RequestBody ActionStatusReq req) {
-        // 鉴权
-        StpUtil.getLoginIdAsLong();
-        meetingService.updateActionItemStatus(actionId, req.getStatus());
-        return R.ok();
-    }
+    // 待办状态入口已下线：待办只读展示，状态单源在任务看板（PUT /api/tasks/{id} 反向同步回待办）
 
-    /** 音频文件上传 */
-    @PostMapping("/upload")
-    public R<UploadResult> upload(@RequestParam("file") MultipartFile file) {
-        StpUtil.getLoginIdAsLong();
-        if (file.isEmpty()) {
-            throw new BizException("上传文件不能为空");
-        }
-
-        String originalName = file.getOriginalFilename();
-        String ext = originalName != null && originalName.contains(".")
-                ? originalName.substring(originalName.lastIndexOf('.') + 1).toLowerCase()
-                : "";
-        if (!ALLOWED_EXTENSIONS.contains(ext)) {
-            throw new BizException("仅支持 mp3/wav/m4a 格式的音频文件");
-        }
-
-        // 生成唯一文件名
-        String newFileName = UUID.randomUUID().toString().replace("-", "") + "." + ext;
-
-        // 确保目录存在
-        File dir = new File(uploadPath);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-
-        File dest = new File(dir, newFileName);
-        try {
-            file.transferTo(dest);
-        } catch (IOException e) {
-            throw new BizException("文件保存失败: " + e.getMessage());
-        }
-
-        UploadResult result = new UploadResult();
-        result.setUrl("/api/meetings/audio/" + newFileName);
-        result.setFileName(originalName);
-        return R.ok(result);
+    /** 纪要文档直传 Dify（pdf/md/docx/txt），返回 dify_file_id 与文件名 */
+    @PostMapping("/files")
+    public R<Map<String, Object>> uploadFile(@RequestParam("file") MultipartFile file) {
+        long userId = StpUtil.getLoginIdAsLong();
+        OpLogger.log(userId, "MEETING", "上传纪要文档", file.getOriginalFilename());
+        return R.ok(meetingService.uploadMeetingFile(file, userId));
     }
 
     /** 推送会议纪要到钉钉 */
@@ -149,13 +111,8 @@ public class MeetingController {
     }
 
     @Data
-    public static class ActionStatusReq {
-        private String status;
-    }
-
-    @Data
-    public static class UploadResult {
-        private String url;
-        private String fileName;
+    public static class SummaryReq {
+        /** 纪要直传 Dify 的文件ID列表（可选，来自 /api/meetings/files） */
+        private List<String> fileIds;
     }
 }

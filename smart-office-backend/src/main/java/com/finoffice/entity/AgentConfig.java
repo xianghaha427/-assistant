@@ -17,6 +17,10 @@ public class AgentConfig {
     private String description;
     private String icon;
     private String difyAppId;
+    /** Dify应用类型：chat对话型 / workflow工作流 */
+    private String difyMode;
+    /** workflow 型应用的输入变量名（如 meeting_text/topic） */
+    private String inputVariable;
     private String systemPrompt;
     private String toolsJson;
     private Integer enabled;

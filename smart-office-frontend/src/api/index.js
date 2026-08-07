@@ -1,4 +1,4 @@
-﻿import axios from 'axios'
+import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
 /**
@@ -40,19 +40,29 @@ request.interceptors.response.use(
 
 /**
  * SSE 流式对话（POST + text/event-stream）
- * @param {object} payload { sessionId, message }
+ * @param {object} payload { session_id, agent_id, message }
  * @param {object} handlers { onSession, onMessage, onDone, onError }
+ * @param {AbortSignal} [signal] AbortController 的 signal，组件卸载/页面切换时主动中断
  */
-export async function streamChat(payload, handlers) {
+export async function streamChat(payload, handlers, signal) {
   const token = localStorage.getItem('so_token')
-  const resp = await fetch('/api/ai/chat', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify(payload)
-  })
+  let resp
+  try {
+    resp = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload),
+      signal
+    })
+  } catch (e) {
+    // 主动中断（页面切换/组件卸载）静默忽略，不弹错
+    if (e?.name === 'AbortError') return
+    handlers.onError?.(e)
+    return
+  }
   if (!resp.ok) {
     handlers.onError?.(new Error('对话请求失败：' + resp.status))
     return
@@ -60,26 +70,32 @@ export async function streamChat(payload, handlers) {
   const reader = resp.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    // 按 SSE 协议解析：事件块之间以空行分隔
-    const blocks = buffer.split('\n\n')
-    buffer = blocks.pop()
-    for (const block of blocks) {
-      let eventName = 'message'
-      let data = ''
-      for (const line of block.split('\n')) {
-        if (line.startsWith('event:')) eventName = line.slice(6).trim()
-        else if (line.startsWith('data:')) data += line.slice(5)
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      // 按 SSE 协议解析：事件块之间以空行分隔
+      const blocks = buffer.split('\n\n')
+      buffer = blocks.pop()
+      for (const block of blocks) {
+        let eventName = 'message'
+        let data = ''
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) eventName = line.slice(6).trim()
+          else if (line.startsWith('data:')) data += line.slice(5)
+        }
+        if (eventName === 'session') handlers.onSession?.(Number(data))
+        else if (eventName === 'message') handlers.onMessage?.(data)
+        else if (eventName === 'done') handlers.onDone?.()
       }
-      if (eventName === 'session') handlers.onSession?.(Number(data))
-      else if (eventName === 'message') handlers.onMessage?.(data)
-      else if (eventName === 'done') handlers.onDone?.()
     }
+    handlers.onDone?.()
+  } catch (e) {
+    // 流读取中被 abort（页面切换/组件卸载）静默忽略
+    if (e?.name === 'AbortError') return
+    handlers.onError?.(e)
   }
-  handlers.onDone?.()
 }
 
 export default request
@@ -92,7 +108,14 @@ export const login = (form) => data(request.post('/auth/login', form))
 export const logout = () => data(request.post('/auth/logout'))
 export const getMe = () => data(request.get('/auth/me'))
 
-/* ==================== 智能体 ==================== */
+/* ==================== 工作台聚合 ==================== */
+/**
+ * 工作台首页聚合数据（响应字段 SNAKE_CASE）：
+ * today_meetings / my_todos / today_briefing / stats
+ */
+export const getWorkbenchHome = () => data(request.get('/workbench/home'))
+
+/* ==================== 智能体（后端管理员用，页面入口已下线） ==================== */
 export const getAgents = () => data(request.get('/agents'))
 export const createAgent = (form) => data(request.post('/agents', form))
 export const updateAgent = (id, form) => data(request.put(`/agents/${id}`, form))
@@ -100,7 +123,7 @@ export const deleteAgent = (id) => data(request.delete(`/agents/${id}`))
 
 /* ==================== AI 会话 ==================== */
 export const createSession = (form) => data(request.post('/ai/sessions', form))
-export const getSessions = () => data(request.get('/ai/sessions'))
+export const getSessions = (params) => data(request.get('/ai/sessions', { params }))
 export const getSessionMessages = (id) => data(request.get(`/ai/sessions/${id}/messages`))
 export const deleteSession = (id) => data(request.delete(`/ai/sessions/${id}`))
 
@@ -121,12 +144,19 @@ export const createMeeting = form => data(request.post('/meetings', form))
 export const getMeetings = () => data(request.get('/meetings'))
 export const getMeeting = id => data(request.get(`/meetings/${id}`))
 export const deleteMeeting = id => data(request.delete(`/meetings/${id}`))
-export const generateMeetingSummary = id => data(request.post(`/meetings/${id}/summary`))
+export const generateMeetingSummary = (id, fileIds) => data(request.post(`/meetings/${id}/summary`, fileIds?.length ? { file_ids: fileIds } : {}))
 export const getMeetingSummary = id => data(request.get(`/meetings/${id}/summary`))
 export const getMeetingActions = id => data(request.get(`/meetings/${id}/actions`))
-export const updateActionStatus = (actionId, form) => data(request.put(`/meetings/actions/${actionId}`, form))
-export const uploadMeetingAudio = formData => data(request.post('/meetings/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }))
+/** 纪要文档直传 Dify（pdf/md/docx/txt），返回 { dify_file_id, file_name } */
+export const uploadMeetingFile = file => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return data(request.post('/meetings/files', formData, { headers: { 'Content-Type': 'multipart/form-data' } }))
+}
 
+
+/* ==================== 用户选项（待办转任务选人） ==================== */
+export const getUserOptions = () => data(request.get('/users/options'))
 
 /* ==================== 知识库 ==================== */
 export const uploadDocument = (form) => {

@@ -1,7 +1,7 @@
 <template>
   <el-container class="layout">
     <!-- ====== 侧边栏 ====== -->
-    <el-aside class="sidebar" :width="collapsed ? '72px' : '240px'">
+    <el-aside class="sidebar" :width="collapsed ? '72px' : '232px'">
       <div class="sidebar-logo" @click="$router.push('/')">
         <div class="logo-mark">✦</div>
         <transition name="fade">
@@ -10,7 +10,7 @@
       </div>
 
       <el-menu
-        :default-active="$route.path"
+        :default-active="activeMenu"
         :collapse="collapsed"
         :collapse-transition="false"
         router
@@ -19,34 +19,78 @@
         text-color="var(--text-secondary)"
         active-text-color="var(--text-primary)"
       >
-        <el-menu-item index="/">
-          <el-icon><Odometer /></el-icon>
-          <template #title>工作台</template>
-        </el-menu-item>
-        <el-menu-item index="/ai">
-          <el-icon><ChatDotRound /></el-icon>
-          <template #title>AI 助手</template>
-        </el-menu-item>
-        <el-menu-item index="/meeting">
-          <el-icon><Calendar /></el-icon>
-          <template #title>智能会议</template>
-        </el-menu-item>
-        <el-menu-item index="/knowledge">
-          <el-icon><Collection /></el-icon>
-          <template #title>知识库</template>
-        </el-menu-item>
-        <el-menu-item index="/agents">
-          <el-icon><MagicStick /></el-icon>
-          <template #title>智能体管理</template>
-        </el-menu-item>
-        <el-menu-item index="/profile">
-          <el-icon><User /></el-icon>
-          <template #title>个人中心</template>
-        </el-menu-item>
-        <el-menu-item index="/system">
-          <el-icon><Setting /></el-icon>
-          <template #title>系统管理</template>
-        </el-menu-item>
+        <!-- 工作概览 -->
+        <el-menu-item-group>
+          <template #title><span class="group-label">工作概览</span></template>
+          <el-menu-item index="/dashboard">
+            <el-icon><Odometer /></el-icon>
+            <template #title>工作台</template>
+          </el-menu-item>
+          <el-menu-item index="/board">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title>数据看板</template>
+          </el-menu-item>
+        </el-menu-item-group>
+
+        <!-- 协同办公 -->
+        <el-menu-item-group>
+          <template #title><span class="group-label">协同办公</span></template>
+          <el-menu-item index="/meeting">
+            <el-icon><Calendar /></el-icon>
+            <template #title>会议中心</template>
+          </el-menu-item>
+          <el-menu-item index="/task">
+            <el-icon><List /></el-icon>
+            <template #title>任务看板</template>
+          </el-menu-item>
+          <el-menu-item index="/knowledge">
+            <el-icon><Collection /></el-icon>
+            <template #title>知识库</template>
+          </el-menu-item>
+        </el-menu-item-group>
+
+        <!-- 创作工具 -->
+        <el-menu-item-group>
+          <template #title><span class="group-label">创作工具</span></template>
+          <el-menu-item index="/writer/weekly">
+            <el-icon><Notebook /></el-icon>
+            <template #title>智能周报</template>
+          </el-menu-item>
+          <el-menu-item index="/writer/email">
+            <el-icon><Message /></el-icon>
+            <template #title>邮件助手</template>
+          </el-menu-item>
+          <el-menu-item index="/writer/notice">
+            <el-icon><Bell /></el-icon>
+            <template #title>通知公告</template>
+          </el-menu-item>
+          <el-menu-item index="/writer/ppt">
+            <el-icon><Present /></el-icon>
+            <template #title>PPT大纲生成</template>
+          </el-menu-item>
+        </el-menu-item-group>
+
+        <!-- 智能分析 -->
+        <el-menu-item-group>
+          <template #title><span class="group-label">智能分析</span></template>
+          <el-menu-item index="/insight">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>行业洞察</template>
+          </el-menu-item>
+          <el-menu-item index="/briefing">
+            <el-icon><Document /></el-icon>
+            <template #title>行业简报</template>
+          </el-menu-item>
+        </el-menu-item-group>
+
+        <!-- 管理（仅管理员可见，组级过滤） -->
+        <el-menu-item-group v-if="isAdmin">
+          <template #title><span class="group-label">管理</span></template>
+          <el-menu-item index="/system">
+            <el-icon><Setting /></el-icon>
+            <template #title>系统管理</template>
+          </el-menu-item>
+        </el-menu-item-group>
       </el-menu>
 
       <div class="sidebar-footer">
@@ -97,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMe, logout } from '../api'
@@ -108,7 +152,41 @@ const collapsed = ref(false)
 const userInfo = ref({})
 
 const currentPageTitle = computed(() => route.meta.title || '工作台')
-const avatarText = computed(() => (userInfo.value.real_name || 'U').slice(0, 1))
+const avatarText = computed(() => (userInfo.value.real_name || userInfo.value.realName || 'U').slice(0, 1))
+
+/**
+ * 菜单高亮归并：会议创建/详情高亮「会议中心」；其余按当前路径精确匹配
+ */
+const activeMenu = computed(() => {
+  const p = route.path
+  if (p.startsWith('/meeting')) return '/meeting'
+  return p
+})
+
+/**
+ * 主题挂载：按路由 meta.theme 给 <html> 加/移除 dark class
+ * - meta.theme === 'dark'（如工作台）→ 深色
+ * - 其余默认浅色商务主题
+ */
+function applyTheme() {
+  if (route.meta.theme === 'dark') {
+    document.documentElement.classList.add('dark')
+  } else {
+    document.documentElement.classList.remove('dark')
+  }
+}
+watch(() => route.path, applyTheme, { immediate: true })
+
+// 当前用户角色（来自登录时存储的 so_user），用于菜单按角色显隐（扩展到组级）
+const localRoles = (() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('so_user') || '{}')
+    return Array.isArray(u.roles) ? u.roles : []
+  } catch (e) {
+    return []
+  }
+})()
+const isAdmin = localRoles.includes('ADMIN')
 
 onMounted(async () => {
   try {
@@ -120,8 +198,22 @@ onMounted(async () => {
 
 async function handleCommand(cmd) {
   if (cmd === 'logout') {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', { type: 'warning' })
-    await logout()
+    try {
+      // beforeClose 显式 done() 确保确认后弹窗一定关闭
+      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+        type: 'warning',
+        confirmButtonText: '退出',
+        cancelButtonText: '取消',
+        beforeClose: (action, instance, done) => done()
+      })
+    } catch (e) {
+      return // 用户取消，不做任何
+    }
+    try {
+      await logout()
+    } catch (e) {
+      // 接口失败也继续本地清理，避免登出卡死
+    }
     localStorage.removeItem('so_token')
     localStorage.removeItem('so_user')
     ElMessage.success('已退出登录')
@@ -139,12 +231,13 @@ async function handleCommand(cmd) {
 .sidebar {
   display: flex;
   flex-direction: column;
-  background: rgba(10, 15, 28, 0.55);
-  backdrop-filter: blur(24px);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--border-light);
   transition: width 0.25s ease;
   overflow: hidden;
 }
+/* 深色主题下侧边栏启用玻璃模糊 */
+html.dark .sidebar { backdrop-filter: blur(24px); }
 
 .sidebar-logo {
   display: flex;
@@ -174,14 +267,30 @@ async function handleCommand(cmd) {
 .sidebar-menu {
   flex: 1;
   border-right: none !important;
-  padding: 8px;
+  padding: 6px 8px;
+  overflow-y: auto;
 }
+/* 分组标签 */
+.sidebar-menu :deep(.el-menu-item-group__title) {
+  padding: 14px 12px 6px;
+  height: auto;
+  line-height: 1.4;
+}
+.group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+/* 折叠态隐藏分组标签 */
+.sidebar-menu.el-menu--collapse :deep(.el-menu-item-group__title) { display: none; }
+
 .sidebar-menu .el-menu-item {
-  border-radius: 11px;
-  margin-bottom: 4px;
-  height: 46px;
-  line-height: 46px;
-  transition: all 0.2s ease;
+  border-radius: 10px;
+  margin-bottom: 3px;
+  height: 42px;
+  line-height: 42px;
+  transition: background 0.18s ease, color 0.18s ease;
   position: relative;
 }
 .sidebar-menu .el-menu-item:hover {
@@ -190,18 +299,22 @@ async function handleCommand(cmd) {
 }
 .sidebar-menu .el-menu-item.is-active {
   background: var(--accent-soft);
-  color: var(--text-primary);
+  color: var(--accent);
+  font-weight: 550;
 }
-/* 激活项左侧发光指示条 */
+/* 激活项左侧指示条 */
 .sidebar-menu .el-menu-item.is-active::before {
   content: "";
   position: absolute;
   left: 0; top: 50%;
   transform: translateY(-50%);
-  width: 3px; height: 20px;
+  width: 3px; height: 18px;
   border-radius: 2px;
+  background: var(--accent);
+}
+html.dark .sidebar-menu .el-menu-item.is-active::before {
   background: var(--grad-brand);
-  box-shadow: 0 0 10px rgba(77, 141, 255, 0.8);
+  box-shadow: 0 0 10px rgba(8, 180, 188, 0.8);
 }
 .sidebar-menu .el-menu-item.is-active .el-icon { color: var(--accent); }
 
@@ -219,7 +332,7 @@ async function handleCommand(cmd) {
   width: 7px; height: 7px;
   border-radius: 50%;
   background: #34D399;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.9);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
   animation: breathe 2.2s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -234,10 +347,10 @@ async function handleCommand(cmd) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(10, 15, 28, 0.5);
-  backdrop-filter: blur(24px);
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--border-light);
 }
+html.dark .topbar { backdrop-filter: blur(24px); }
 .topbar-left { display: flex; align-items: center; gap: 12px; }
 
 .collapse-btn {
@@ -273,7 +386,6 @@ async function handleCommand(cmd) {
   color: #fff;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 0 12px rgba(77, 141, 255, 0.4);
 }
 .user-name { font-size: 13px; color: var(--text-primary); font-weight: 500; }
 .chip-arrow { font-size: 12px; color: var(--text-tertiary); }
@@ -282,6 +394,7 @@ async function handleCommand(cmd) {
 .main-content {
   overflow-y: auto;
   padding: 22px 26px;
+  background: var(--bg);
 }
 
 .fade-enter-active { transition: opacity 0.18s ease 0.08s; }

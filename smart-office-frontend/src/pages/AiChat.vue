@@ -51,7 +51,16 @@
         >
           <div class="msg-avatar" v-if="m.role === 'assistant'">✦</div>
           <div class="msg-bubble">
-            <div v-if="m.role === 'assistant'" v-html="renderMd(m.content)"></div>
+            <template v-if="m.role === 'assistant'">
+              <template v-for="(seg, j) in splitSegments(m.content, m.streaming)" :key="j">
+                <div
+                  v-if="seg.type === 'chart'"
+                  class="chart-slot"
+                  :ref="(el) => bindChart(el, i + '-' + j, seg.option)"
+                ></div>
+                <div v-else v-html="renderMd(seg.text)"></div>
+              </template>
+            </template>
             <template v-else>{{ m.content }}</template>
             <span v-if="m.streaming" class="cursor">▍</span>
           </div>
@@ -81,11 +90,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import { getSessions, getSessionMessages, deleteSession, streamChat } from '../api'
+
+/* ====== echarts 按需引入（与 DataBoard 一致，避免全量打包） ====== */
+import * as echarts from 'echarts/core'
+import { LineChart, PieChart, BarChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent
+} from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+echarts.use([LineChart, PieChart, BarChart, TitleComponent, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+
+/**
+ * 可作为组件嵌入任意页面：
+ * - 传入 agentId 时固定使用该智能体（如行业洞察 agentId=3）
+ * - 未传时回退读取 URL query 中的 agent 参数
+ */
+const props = defineProps({
+  agentId: { type: Number, default: null }
+})
 
 const route = useRoute()
 
@@ -94,8 +124,11 @@ const messages = ref([])
 const inputText = ref('')
 const sending = ref(false)
 const currentSessionId = ref(null)
+const currentAgentId = ref(props.agentId ?? (route.query.agent ? Number(route.query.agent) : null))
 const messageListRef = ref(null)
 const inputRef = ref(null)
+/** 当前 SSE 流的 AbortController（页面切换/组件卸载时中断） */
+let chatController = null
 
 const quickQuestions = [
   '帮我写一份本周工作总结，重点突出客户拜访和项目进展',
@@ -104,6 +137,8 @@ const quickQuestions = [
 ]
 
 onMounted(async () => {
+  // URL 参数恢复智能体（需在 loadSessions 前生效，确保会话列表按 agent 过滤）
+  if (!props.agentId && route.query.agent) currentAgentId.value = Number(route.query.agent)
   await loadSessions()
   // URL 参数恢复会话（从工作台跳转）
   const sid = route.query.session
@@ -113,8 +148,41 @@ onMounted(async () => {
   }
 })
 
+// 组件卸载：中断进行中的 SSE 流，避免孤儿请求与卸载后写状态
+onBeforeUnmount(() => {
+  if (chatController) {
+    chatController.abort()
+    chatController = null
+  }
+  disposeAllCharts()
+  window.removeEventListener('resize', handleChartResize)
+})
+window.addEventListener('resize', handleChartResize)
+
+// prop 变化（宿主页面切换智能体）
+watch(() => props.agentId, (v) => {
+  if (v) switchAgent(v)
+})
+
+// route query agent change (e.g. switch agent from dashboard without remount)
+watch(() => route.query.agent, (v) => {
+  if (!props.agentId && v) switchAgent(Number(v))
+})
+
+/** 切换智能体：重新按 agentId 过滤会话列表，并清空当前对话 */
+function switchAgent(agentId) {
+  if (currentAgentId.value === agentId) return
+  currentAgentId.value = agentId
+  currentSessionId.value = null
+  messages.value = []
+  disposeAllCharts()
+  loadSessions()
+}
+
 async function loadSessions() {
-  sessions.value = await getSessions()
+  // 绑定智能体时只列该智能体的历史会话（后端按 agent_id 过滤）
+  const params = currentAgentId.value ? { agentId: currentAgentId.value } : undefined
+  sessions.value = await getSessions(params)
 }
 
 async function selectSession(s) {
@@ -123,6 +191,8 @@ async function selectSession(s) {
     return
   }
   currentSessionId.value = s.id
+  if (s.agent_id) currentAgentId.value = s.agent_id
+  disposeAllCharts()
   messages.value = await getSessionMessages(s.id)
   scrollToBottom()
 }
@@ -134,6 +204,7 @@ function startNewSession() {
   }
   currentSessionId.value = null
   messages.value = []
+  disposeAllCharts()
   inputRef.value?.focus()
 }
 
@@ -173,8 +244,9 @@ async function sendMessage(text) {
   sending.value = true
   scrollToBottom()
 
+  chatController = new AbortController()
   await streamChat(
-    { message: content, session_id: currentSessionId.value },
+    { message: content, session_id: currentSessionId.value, agent_id: currentAgentId.value },
     {
       onSession: (sid) => {
         currentSessionId.value = sid
@@ -191,9 +263,13 @@ async function sendMessage(text) {
         aiMsg.content = aiMsg.content || ('抱歉，出了点问题：' + msg)
         aiMsg.streaming = false
       }
-    }
+    },
+    chatController.signal
   )
+  chatController = null
   sending.value = false
+  // 被 abort（页面切换）时也确保收尾，避免残留打字光标
+  aiMsg.streaming = false
   scrollToBottom()
 }
 
@@ -210,6 +286,117 @@ function renderMd(text) {
   const escaped = String(text || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return escaped.replace(/\n/g, '<br>')
+}
+
+/* ==================== 图表渲染（```echarts 代码块） ====================
+ * 行业洞察 DSL 约定：回复文本中内嵌 ```echarts 代码块，内容为完整的
+ * ECharts option JSON。解析成功渲染为交互图表；失败降级为原文展示，
+ * 不阻断文本显示。
+ * ================================================================ */
+const chartInitMap = new Map() // key -> echarts 实例
+const chartObserverMap = new Map() // key -> ResizeObserver（容器布局变化后重排图表）
+
+/**
+ * 旧 DSL 输出含紫/蓝/青配色，前端统一替换为当前 182 青系令牌，
+ * 避免紫色回归（后续换色只需改此映射）
+ */
+const LEGACY_COLOR_MAP = {
+  '#4d8dff': '#08B4BC',
+  '#8b5cf6': '#047E85',
+  '#7c5cfc': '#047E85',
+  '#a78bfa': '#5CD0D6',
+  '#22d3ee': '#0AC2CA',
+  '#0fb5ce': '#08B4BC',
+  '#6366f1': '#23485F',
+  '#818cf8': '#0AC2CA',
+  '#67e8f9': '#9BE3E7'
+}
+
+function normalizeOption(opt) {
+  try {
+    let s = JSON.stringify(opt)
+    for (const [oldColor, newColor] of Object.entries(LEGACY_COLOR_MAP)) {
+      s = s.replace(new RegExp(oldColor, 'gi'), newColor)
+    }
+    return JSON.parse(s)
+  } catch (e) {
+    return opt
+  }
+}
+
+/**
+ * 将消息内容切分为 文本/图表 段：
+ * - 完整 ```echarts 块且 JSON 解析成功 → chart 段
+ * - JSON 解析失败 → 降级为原文文本段（转义后展示）
+ * - 流式中未闭合的 ```echarts 尾部 → 占位提示，不裸露半截 JSON
+ */
+function splitSegments(content, streaming) {
+  const segs = []
+  const text = String(content || '')
+  const re = /```echarts\s*\n?([\s\S]*?)```/g
+  let last = 0
+  let m
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) segs.push({ type: 'text', text: text.slice(last, m.index) })
+    let option = null
+    try {
+      const parsed = JSON.parse(m[1].trim())
+      if (parsed && typeof parsed === 'object') option = parsed
+    } catch (e) {
+      option = null
+    }
+    segs.push(option ? { type: 'chart', option } : { type: 'text', text: m[0] })
+    last = m.index + m[0].length
+  }
+  let tail = text.slice(last)
+  if (streaming) {
+    const idx = tail.lastIndexOf('```echarts')
+    if (idx !== -1) tail = tail.slice(0, idx) + '\n正在生成图表…'
+  }
+  if (tail) segs.push({ type: 'text', text: tail })
+  return segs
+}
+
+/** 图表容器 ref 回调：挂载/更新时初始化，已初始化且元素未变则刷新并重排尺寸 */
+function bindChart(el, key, option) {
+  if (!el) return
+  const existing = chartInitMap.get(key)
+  if (existing) {
+    if (existing.getDom() === el) {
+      existing.setOption(normalizeOption(option))
+      nextTick(() => existing.resize())
+      return
+    }
+    existing.dispose()
+    chartInitMap.delete(key)
+    chartObserverMap.get(key)?.disconnect()
+    chartObserverMap.delete(key)
+  }
+  try {
+    const inst = echarts.init(el)
+    inst.setOption(normalizeOption(option))
+    chartInitMap.set(key, inst)
+    // ref 回调触发时容器可能尚未完成布局（0x0），布局后补齐尺寸
+    nextTick(() => inst.resize())
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => inst.resize())
+      ro.observe(el)
+      chartObserverMap.set(key, ro)
+    }
+  } catch (e) {
+    // 渲染失败不阻断对话：容器保留空白，文本部分已正常展示
+  }
+}
+
+function disposeAllCharts() {
+  chartObserverMap.forEach((ro) => ro.disconnect())
+  chartObserverMap.clear()
+  chartInitMap.forEach((inst) => inst.dispose())
+  chartInitMap.clear()
+}
+
+function handleChartResize() {
+  chartInitMap.forEach((inst) => inst.resize())
 }
 
 function formatTime(t) {
@@ -241,8 +428,8 @@ function formatTime(t) {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   padding: 14px;
-  backdrop-filter: blur(18px);
 }
+html.dark .session-panel { backdrop-filter: blur(18px); }
 .new-chat-btn { margin-bottom: 12px; }
 
 .session-list { flex: 1; overflow-y: auto; }
@@ -259,7 +446,7 @@ function formatTime(t) {
 .session-item:hover .del-icon { opacity: 1; }
 .session-item.active {
   background: var(--accent-soft);
-  border-color: rgba(77, 141, 255, 0.25);
+  border-color: rgba(8, 180, 188, 0.25);
 }
 .session-item.active::before {
   content: "";
@@ -269,7 +456,6 @@ function formatTime(t) {
   width: 3px; height: 16px;
   border-radius: 2px;
   background: var(--grad-brand);
-  box-shadow: 0 0 8px rgba(77, 141, 255, 0.8);
 }
 .session-item-title {
   font-size: 13px;
@@ -300,10 +486,10 @@ function formatTime(t) {
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  backdrop-filter: blur(18px);
   position: relative;
   overflow: hidden;
 }
+html.dark .chat-area { backdrop-filter: blur(18px); }
 
 /* ---- 欢迎页 ---- */
 .welcome {
@@ -319,7 +505,7 @@ function formatTime(t) {
   content: "";
   position: absolute;
   width: 480px; height: 300px;
-  background: radial-gradient(ellipse, rgba(77, 141, 255, 0.14), transparent 70%);
+  background: radial-gradient(ellipse, rgba(8, 180, 188, 0.14), transparent 70%);
   top: 18%;
   pointer-events: none;
 }
@@ -339,7 +525,7 @@ function formatTime(t) {
   position: absolute;
   inset: -8px;
   border-radius: 28px;
-  border: 1px solid rgba(77, 141, 255, 0.3);
+  border: 1px solid rgba(8, 180, 188, 0.3);
   animation: pulse-ring 2.8s ease-out infinite;
 }
 @keyframes float {
@@ -374,19 +560,19 @@ function formatTime(t) {
 .quick-q {
   padding: 13px 18px;
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--surface-hover);
   border: 1px solid var(--border);
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.18s ease;
 }
+html.dark .quick-q { background: rgba(255, 255, 255, 0.035); }
 .quick-q:hover {
   color: var(--text-primary);
-  border-color: rgba(77, 141, 255, 0.45);
+  border-color: rgba(8, 180, 188, 0.45);
   background: var(--accent-soft);
   transform: translateX(4px);
-  box-shadow: 0 0 18px rgba(77, 141, 255, 0.15);
 }
 
 /* ---- 消息流 ---- */
@@ -411,7 +597,6 @@ function formatTime(t) {
   font-size: 15px;
   display: flex; align-items: center; justify-content: center;
   margin-right: 10px;
-  box-shadow: 0 0 12px rgba(77, 141, 255, 0.35);
 }
 
 .msg-bubble {
@@ -426,14 +611,29 @@ function formatTime(t) {
   background: var(--grad-brand);
   color: #fff;
   border-bottom-right-radius: 5px;
-  box-shadow: 0 4px 18px rgba(77, 141, 255, 0.25);
 }
 .msg-row.assistant .msg-bubble {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--surface-hover);
   border: 1px solid var(--border-light);
   color: var(--text-primary);
   border-bottom-left-radius: 5px;
 }
+html.dark .msg-row.assistant .msg-bubble { background: rgba(255, 255, 255, 0.045); }
+
+/* 含图表的消息气泡放宽，给图表足够展示空间 */
+.msg-row.assistant .msg-bubble:has(.chart-slot) { max-width: 92%; }
+
+/* ---- 内嵌图表卡片（配色跟随主题令牌） ---- */
+.chart-slot {
+  width: 100%;
+  height: 340px;
+  margin: 10px 0 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--surface);
+  padding: 6px;
+}
+html.dark .chart-slot { background: rgba(255, 255, 255, 0.03); }
 
 /* 打字光标 */
 .cursor {
@@ -452,15 +652,16 @@ function formatTime(t) {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 8px 8px 8px 16px;
   transition: border-color 0.18s, box-shadow 0.18s;
 }
+html.dark .input-shell { background: rgba(255, 255, 255, 0.045); }
 .input-shell:focus-within {
-  border-color: rgba(77, 141, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(77, 141, 255, 0.12), 0 0 24px rgba(77, 141, 255, 0.12);
+  border-color: rgba(8, 180, 188, 0.55);
+  box-shadow: 0 0 0 3px rgba(8, 180, 188, 0.12);
 }
 .input-shell textarea {
   flex: 1;
@@ -488,7 +689,7 @@ function formatTime(t) {
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: filter 0.15s, opacity 0.15s;
-  box-shadow: 0 2px 12px rgba(77, 141, 255, 0.35);
+  box-shadow: 0 2px 12px rgba(8, 180, 188, 0.35);
 }
 .send-btn:hover:not(:disabled) { filter: brightness(1.15); }
 .send-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }

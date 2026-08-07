@@ -1,13 +1,7 @@
-# FinPilot - 会议纪要助手 DSL
-# 用途：接收会议转写文本，生成结构化会议纪要和待办事项
-# 类型：Chatflow（对话型工作流）
-# 工作流：开始 → LLM → 结束
-# 导入方式：Dify 工作室 → 创建应用 → 导入 DSL 文件
 app:
-  description: >-
-    FinPilot 会议纪要助手，接收会议转写文本，自动生成结构化的会议纪要，包含会议信息、议题摘要、决议事项和待办事项。
-  icon: "📝"
-  icon_background: '#E8F5E9'
+  description: 会议纪要助手：粘贴会议转写文本，自动完成文本质量校验、结构化纪要生成与 Markdown 格式化，产出包含议题讨论、会议决议、待办事项与风险提示的标准会议纪要。适用于金融企业例会、项目评审、经营分析等各类会议场景。
+  icon: 📝
+  icon_background: '#E0F2FE'
   mode: advanced-chat
   name: 会议纪要助手
   use_icon_as_answer_icon: false
@@ -18,118 +12,377 @@ workflow:
   environment_variables: []
   features:
     file_upload:
-      allowed_file_extensions: []
-      allowed_file_types: []
+      allowed_file_extensions:
+      - .pdf
+      - .docx
+      - .doc
+      - .md
+      - .txt
+      allowed_file_types:
+      - document
       allowed_file_upload_methods:
-        - local_file
-        - remote_url
-      enabled: false
+      - local_file
+      - remote_url
+      enabled: true
       number_limits: 3
       image:
         enabled: false
         number_limits: 3
         transfer_methods:
-          - local_file
-          - remote_url
-    opening_statement: 您好！我是 FinPilot 会议纪要助手。请提供会议转写文本，我将为您生成结构化的会议纪要和待办事项。
+        - local_file
+        - remote_url
     retriever_resource:
       enabled: false
     sensitive_word_avoidance:
       enabled: false
     speech_to_text:
       enabled: false
-    suggested_questions: []
-    suggested_questions_after_answer:
-      enabled: true
     text_to_speech:
       enabled: false
-      language: ''
-      voice: ''
+    opening_statement: 您好！我是会议纪要助手。请粘贴会议转写文本，或上传会议文档（PDF/Word/Markdown），然后点击下方快捷按钮即可生成纪要。
+    suggested_questions:
+    - 已上传文档，请生成会议纪要
+    - 帮我整理一下会议内容
+    suggested_questions_after_answer:
+      enabled: true
   graph:
     edges:
-      - data:
-          isInIteration: false
-          sourceType: start
-          targetType: llm
-        id: edge-start-to-llm
-        source: node-start
-        sourceHandle: source
-        target: node-llm
-        targetHandle: target
-        type: custom
-      - data:
-          isInIteration: false
-          sourceType: llm
-          targetType: end
-        id: edge-llm-to-end
-        source: node-llm
-        sourceHandle: source
-        target: node-end
-        targetHandle: target
-        type: custom
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: if-else
+      id: e1
+      source: '1754460000000'
+      sourceHandle: source
+      target: '1754460000007'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceHandle: 'true'
+        sourceType: if-else
+        targetType: document-extractor
+      id: e2
+      source: '1754460000007'
+      sourceHandle: 'true'
+      target: '1754460000008'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: document-extractor
+        targetType: code
+      id: e3
+      source: '1754460000008'
+      sourceHandle: source
+      target: '1754460000009'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceHandle: 'false'
+        sourceType: if-else
+        targetType: code
+      id: e4
+      source: '1754460000007'
+      sourceHandle: 'false'
+      target: '1754460000009'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: code
+      id: e5
+      source: '1754460000009'
+      sourceHandle: source
+      target: '1754460000001'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: if-else
+      id: e6
+      source: '1754460000001'
+      sourceHandle: source
+      target: '1754460000002'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceHandle: 'true'
+        sourceType: if-else
+        targetType: llm
+      id: e7
+      source: '1754460000002'
+      sourceHandle: 'true'
+      target: '1754460000003'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceHandle: 'false'
+        sourceType: if-else
+        targetType: answer
+      id: e8
+      source: '1754460000002'
+      sourceHandle: 'false'
+      target: '1754460000005'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: e9
+      source: '1754460000003'
+      sourceHandle: source
+      target: '1754460000004'
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: answer
+      id: e10
+      source: '1754460000004'
+      sourceHandle: source
+      target: '1754460000006'
+      targetHandle: target
+      type: custom
     nodes:
-      - data:
-          desc: 接收用户输入的会议转写文本
-          title: 开始
-          type: start
-          variables: []
-        height: 54
-        id: node-start
-        position:
-          x: 80
-          y: 282
-        sourcePosition: right
-        targetPosition: left
-        type: custom
-        width: 244
-      - data:
-          context:
-            enabled: false
-          desc: 生成结构化会议纪要
-          model:
-            completion_params:
-              temperature: 0.4
-              top_p: 0.9
-              max_tokens: 4096
-            mode: chat
-            name: deepseek-chat
-            provider: deepseek
-          prompt_template:
-            - id: system-prompt
-              role: system
-              text: "你是 FinPilot 会议纪要助手。请根据用户提供的会议转写文本，生成结构化的会议纪要，包含以下部分：\n\n1. 会议基本信息（标题、时间、参会人）\n2. 议题摘要（按议题分点总结）\n3. 决议事项\n4. 待办事项（格式：[责任人] 具体任务 | 截止时间）\n\n如果信息不完整，请基于上下文合理推断并标注。"
-            - id: user-prompt
-              role: user
-              text: "请根据以下会议转写文本生成结构化的会议纪要：\n\n{{#sys.query#}}"
-          selected_features: []
-          title: LLM
-          type: llm
-          vision:
-            enabled: false
-        height: 98
-        id: node-llm
-        position:
-          x: 384
-          y: 282
-        sourcePosition: right
-        targetPosition: left
-        type: custom
-        width: 244
-      - data:
-          desc: 输出会议纪要
-          outputs:
-            - value_selector:
-                - node-llm
-                - text
-              variable: text
-          title: 结束
-          type: end
-        height: 90
-        id: node-end
-        position:
-          x: 688
-          y: 282
-        sourcePosition: right
-        targetPosition: left
-        type: custom
-        width: 244
+    - data:
+        desc: 用户通过聊天界面输入文本或上传文档
+        title: 开始
+        type: start
+        variables: []
+      height: 116
+      id: '1754460000000'
+      position:
+        x: 80
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import re\n\n\ndef main(meeting_text: str) -> dict:\n    \"\"\"\n    文本质量校验：\n    1. strip 后长度须 >= 50；\n    2. 不能全是标点/数字（须存在有效文字）；\n    3. 须包含中文或英文字母。\n    返回：\n        valid           - 是否通过校验（bool）\n        invalid_reason  - 无效原因提示文案（valid 时为空串）\n        invalid_message - 无效分支完整回复文案（\"❌ \"+原因+引导文案），\n                          由「结束A」节点直接引用输出（end 节点不支持拼接）\n    \"\"\"\n    text = (meeting_text or \"\").strip()\n    valid = True\n    reason = \"\"\n\n    if len(text) < 50:\n        valid = False\n        reason = (\n            f\"会议文本长度仅 {len(text)} 字，不足 50 字最低要求，\"\n            \"无法有效提取会议要素\"\n        )\n    elif not re.sub(r\"[^\\u4e00-\\u9fa5A-Za-z]\", \"\", text):\n        valid = False\n        reason = \"会议文本全部为标点符号或数字，缺少实质性的文字内容\"\n    elif not re.search(r\"[\\u4e00-\\u9fa5A-Za-z]\", text):\n        valid = False\n        reason = \"会议文本未包含中文或英文内容，疑似无效输入\"\n\n    invalid_message = \"\"\n    if not valid:\n        invalid_message = (\n            \"❌ \" + reason\n            + \"。请粘贴完整的会议转写文本，建议50字以上，\"\n            \"包含发言人、讨论内容和结论。\"\n        )\n\n    return {\n        \"valid\": valid,\n        \"invalid_reason\": reason,\n        \"invalid_message\": invalid_message,\n    }"
+        code_language: python3
+        desc: 校验会议文本长度、文字有效性，并预组装无效分支回复文案
+        outputs:
+          valid:
+            children: null
+            type: boolean
+          invalid_reason:
+            children: null
+            type: string
+          invalid_message:
+            children: null
+            type: string
+        title: 文本质量校验
+        type: code
+        variables:
+        - variable: meeting_text
+          value_selector:
+          - '1754460000009'
+          - merged_text
+      height: 54
+      id: '1754460000001'
+      position:
+        x: 1296
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: cond-valid-001
+            value: 'true'
+            varType: boolean
+            variable_selector:
+            - '1754460000001'
+            - valid
+          id: 'true'
+          logical_operator: and
+        desc: valid=true → 结构化纪要生成；否则 → 结束A（无效分支）
+        title: 条件分支
+        type: if-else
+      height: 126
+      id: '1754460000002'
+      position:
+        x: 1600
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: 从会议转写文本中提取结构化会议纪要（JSON）
+        model:
+          completion_params:
+            temperature: 0.3
+            top_p: 0.9
+            max_tokens: 4096
+          mode: chat
+          name: deepseek-chat
+          provider: deepseek
+        prompt_template:
+        - id: prompt-minutes-system
+          role: system
+          text: "你是一名专业的会议纪要秘书，长期服务金融企业，熟悉例会、项目评审、经营分析等会议场景，擅长从杂乱的会议转写文本中准确提炼会议要素。\n请根据用户提供的会议转写文本，生成一份结构化的会议纪要。\n\n【前置判断——必须先执行】\n在生成纪要之前，先判断输入文本是否属于会议内容。如果满足以下任一条件，视为「非会议内容或信息严重不足」，必须直接输出下方拒绝 JSON，不得硬凑纪要：\n  · 输入为日常闲聊、问候寒暄（如「今天天气不错」「你好」「吃了吗」）、测试文字、无意义字符等，明显不是会议场景；\n  · 输入中没有任何可识别的议题讨论、决策或工作安排；\n  · 输入虽有对话轮次但无发言人标注（如 A:/B: 或姓名:），且内容不足以推断出任何会议要素。\n\n拒绝时严格输出以下 JSON（不要加 ```json 包裹，不要附加解释）：\n{\"title\":\"无法生成会议纪要\",\"date\":\"\",\"attendees\":[],\"topics\":[],\"decisions\":[],\"action_items\":[],\"risks\":[],\"error\":\"输入内容不足以生成会议纪要，请提供更完整的会议转写文本（建议包含发言人、讨论内容和结论）。\"}\n\n【输出要求】\n1. 只输出一个 JSON 对象，不要用 ```json 包裹，不要输出任何 JSON 之外的解释文字。\n2. JSON 结构严格如下：\n{\"title\":\"会议标题\",\"date\":\"会议日期\",\"attendees\":[\"参会人\"],\"topics\":[{\"topic\":\"议题名称\",\"discussion\":\"讨论摘要\",\"conclusion\":\"议题结论\"}],\"decisions\":[\"会议决议\"],\"action_items\":[{\"content\":\"待办内容\",\"assignee\":\"责任人\",\"deadline\":\"截止时间\"}],\"risks\":[\"风险提示\"]}\n\n【填写规则】\n1. 仅当文本确认为会议内容后，才用\"[推断]\"标注无法从原文确定的个别字段；如果 title、date、attendees 三个核心字段全部需要推断，说明输入本身不是会议内容，应走上方拒绝流程。\n2. deadline 统一使用 YYYY-MM-DD 格式；原文未明确时间的填\"待定\"。\n3. action_items 每条必须明确责任人 assignee；原文找不到责任人的填\"待指定\"。\n4. title、date、attendees 尽量从原文提取，attendees 提取人名或角色，不遗漏、不虚构。\n5. topics 的 discussion 须客观概括讨论要点，conclusion 为该议题最终结论；语言精炼，不带主观评价。\n6. decisions 为会议明确作出的决定；risks 为会议中提及的风险或待关注问题，没有则为空数组。"
+        - id: prompt-minutes-user
+          role: user
+          text: '以下是会议转写文本，请按要求生成结构化会议纪要，只输出一个 JSON 对象，不要用 ```json 包裹，不要任何额外解释：
+
+
+            {{#1754460000009.merged_text#}}'
+        selected_features: []
+        title: 结构化纪要生成
+        type: llm
+        vision:
+          enabled: false
+      height: 98
+      id: '1754460000003'
+      position:
+        x: 1904
+        y: 182
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import json\nimport re\n\n\ndef _esc(value):\n    \"\"\"表格单元格转义：竖线与换行\"\"\"\n    s = str(value) if value is not None else \"-\"\n    return s.replace(\"|\", \"\\\\|\").replace(\"\\r\\n\", \"\\n\").replace(\"\\n\", \"<br>\").strip() or \"-\"\n\n\ndef _is_inferred(value):\n    \"\"\"判断字段值是否为推断值（包含 [推断] 或为空）\"\"\"\n    if value is None:\n        return True\n    s = str(value).strip()\n    return s == \"\" or \"[推断]\" in s\n\n\ndef main(llm_text: str) -> dict:\n    \"\"\"\n    解析「结构化纪要生成」LLM 输出并格式化为 Markdown 纪要：\n    1. 第一层容错：直接 json.loads；\n    2. 第二层容错：正则提取最外层 {...} 后再解析；\n    3. 均失败则降级为原文输出 + 提示，不中断工作流。\n    返回：\n        result       - 完整 Markdown 纪要（或降级文案）\n        action_count - 待办事项数量（int）\n    \"\"\"\n    text = (llm_text or \"\").strip()\n    if not text:\n        return {\n            \"result\": \"⚠️ 纪要生成结果为空，请稍后重试或检查输入文本。\",\n            \"action_count\": 0,\n        }\n\n    # ---------- 双层容错解析 ----------\n    minutes = None\n    try:\n        obj = json.loads(text)\n        if isinstance(obj, dict):\n            minutes = obj\n    except (json.JSONDecodeError, ValueError):\n        pass\n    if minutes is None:\n        brace = re.search(r\"\\{.*\\}\", text, re.DOTALL)\n        if brace:\n            try:\n                obj = json.loads(brace.group(0))\n                if isinstance(obj, dict):\n                    minutes = obj\n            except (json.JSONDecodeError, ValueError):\n                pass\n    if minutes is None:\n        return {\n            \"result\": \"⚠️ 纪要结构化解析失败，以下为模型原始输出，可人工整理：\\n\\n\" + text,\n            \"action_count\": 0,\n        }\n\n    # ---------- 检测 LLM 返回的 error 字段（信息不足拒绝） ----------\n    if minutes.get(\"error\"):\n        return {\n            \"result\": \"⚠️ \" + str(minutes[\"error\"]),\n            \"action_count\": 0,\n        }\n\n    # ---------- 内容质量兜底检测 ----------\n    # 即使 LLM 没有走拒绝流程，如果核心内容为空，说明输入不是有效会议内容\n    # 判断标准：attendees 为空/推断 AND topics 为空 → 拒绝\n    # （一场真实会议至少有参会人和讨论议题，缺一不可）\n    attendees = minutes.get(\"attendees\")\n    has_real_attendees = isinstance(attendees, list) and any(\n        str(a).strip() and \"[推断]\" not in str(a) and \"未知\" not in str(a)\n        for a in attendees\n    )\n    topics = minutes.get(\"topics\") if isinstance(minutes.get(\"topics\"), list) else []\n    has_real_topics = any(\n        isinstance(t, dict) and str(t.get(\"topic\", \"\")).strip()\n        and \"[推断]\" not in str(t.get(\"topic\", \"\"))\n        for t in topics\n    )\n    if not has_real_attendees and not has_real_topics:\n        return {\n            \"result\": \"⚠️ 输入内容不足以生成会议纪要，请提供更完整的会议转写文本\"\n                      \"（建议包含发言人、讨论内容和结论）。\",\n            \"action_count\": 0,\n        }\n\n    # ---------- 格式化为 Markdown ----------\n    lines = []\n    title = str(minutes.get(\"title\") or \"[推断] 会议纪要\")\n    lines.append(\"# \" + title)\n    lines.append(\"\")\n    lines.append(\"**会议日期**：\" + str(minutes.get(\"date\") or \"[推断]\"))\n    if isinstance(attendees, list) and attendees:\n        lines.append(\"**参 会 人**：\" + \"、\".join(str(a) for a in attendees if str(a).strip()))\n    else:\n        lines.append(\"**参 会 人**：[推断] 原文未明确提及\")\n    lines.append(\"\")\n\n    lines.append(\"## \U0001F4CB 议题讨论\")\n    if topics:\n        lines.append(\"| 议题 | 讨论摘要 | 结论 |\")\n        lines.append(\"| --- | --- | --- |\")\n        for t in topics:\n            if not isinstance(t, dict):\n                continue\n            lines.append(\n                \"| \" + _esc(t.get(\"topic\"))\n                + \" | \" + _esc(t.get(\"discussion\"))\n                + \" | \" + _esc(t.get(\"conclusion\")) + \" |\"\n            )\n    else:\n        lines.append(\"原文未提炼出明确的议题讨论信息。\")\n    lines.append(\"\")\n\n    decisions = minutes.get(\"decisions\") if isinstance(minutes.get(\"decisions\"), list) else []\n    lines.append(\"## ✅ 会议决议\")\n    if decisions:\n        for d in decisions:\n            if str(d).strip():\n                lines.append(\"- \" + str(d).strip())\n    else:\n        lines.append(\"- 会议未形成明确决议\")\n    lines.append(\"\")\n\n    actions = minutes.get(\"action_items\") if isinstance(minutes.get(\"action_items\"), list) else []\n    lines.append(\"## \U0001F4CC 待办事项\")\n    if actions:\n        lines.append(\"| 内容 | 责任人 | 截止时间 | 状态 |\")\n        lines.append(\"| --- | --- | --- | --- |\")\n        for a in actions:\n            if not isinstance(a, dict):\n                continue\n            lines.append(\n                \"| \" + _esc(a.get(\"content\"))\n                + \" | \" + _esc(a.get(\"assignee\") or \"待指定\")\n                + \" | \" + _esc(a.get(\"deadline\") or \"待定\")\n                + \" | 待启动 |\"\n            )\n    else:\n        lines.append(\"未提取到待办事项。\")\n    lines.append(\"\")\n\n    risks = minutes.get(\"risks\") if isinstance(minutes.get(\"risks\"), list) else []\n    lines.append(\"## ⚠️ 风险提示\")\n    if risks:\n        for r in risks:\n            if str(r).strip():\n                lines.append(\"- \" + str(r).strip())\n    else:\n        lines.append(\"- 未识别到明确的风险信息\")\n\n    return {\n        \"result\": \"\\n\".join(lines),\n        \"action_count\": len([a for a in actions if isinstance(a, dict)]),\n    }"
+        code_language: python3
+        desc: 双层容错解析 LLM 输出的纪要 JSON，并格式化为 Markdown 纪要
+        outputs:
+          result:
+            children: null
+            type: string
+          action_count:
+            children: null
+            type: number
+        title: 解析与格式化
+        type: code
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1754460000003'
+          - text
+      height: 54
+      id: '1754460000004'
+      position:
+        x: 2208
+        y: 182
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: '{{#1754460000001.invalid_message#}}'
+        desc: 文本校验未通过
+        title: 回答A
+        type: answer
+      height: 90
+      id: '1754460000005'
+      position:
+        x: 1904
+        y: 432
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: '{{#1754460000004.result#}}'
+        desc: 输出会议纪要
+        title: 回答B
+        type: answer
+      height: 90
+      id: '1754460000006'
+      position:
+        x: 2512
+        y: 182
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: not empty
+            id: cond-fc-001
+            value: ''
+            varType: file
+            variable_selector:
+            - sys
+            - files
+          id: 'true'
+          logical_operator: and
+        desc: 判断是否上传了文档
+        title: 文件判断
+        type: if-else
+      height: 126
+      id: '1754460000007'
+      position:
+        x: 384
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: 提取上传文档的文本内容
+        title: 文档提取
+        type: document-extractor
+        variable_selector:
+        - sys
+        - files
+        is_array_file: false
+      height: 90
+      id: '1754460000008'
+      position:
+        x: 688
+        y: 120
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "def main(query_text, extracted_text) -> dict:\n    text = str(query_text).strip() if query_text else \"\"\n    if text in (\"None\", \"null\", \"nil\"):\n        text = \"\"\n    extracted = str(extracted_text).strip() if extracted_text else \"\"\n    if extracted in (\"None\", \"null\", \"nil\"):\n        extracted = \"\"\n    if not text and not extracted:\n        return {\"merged_text\": \"\", \"invalid_message\": \"\\u274c \\u672a\\u63d0\\u4f9b\\u4efb\\u4f55\\u4f1a\\u8bae\\u5185\\u5bb9\\u3002\\u8bf7\\u7c98\\u8d34\\u4f1a\\u8bae\\u8f6c\\u5199\\u6587\\u672c\\uff0c\\u6216\\u4e0a\\u4f20\\u4f1a\\u8bae\\u6587\\u6863\\u3002\"}\n    final_text = extracted if extracted else text\n    return {\"merged_text\": final_text, \"invalid_message\": \"\"}"
+        code_language: python3
+        desc: 合并聊天输入与文档提取结果
+        outputs:
+          merged_text:
+            children: null
+            type: string
+          invalid_message:
+            children: null
+            type: string
+        title: 文本合并
+        type: code
+        variables:
+        - variable: query_text
+          value_selector:
+          - sys
+          - query
+        - variable: extracted_text
+          value_selector:
+          - '1754460000008'
+          - text
+      height: 54
+      id: '1754460000009'
+      position:
+        x: 992
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244

@@ -48,7 +48,7 @@ const icon = computed(() => route.meta.icon || 'MagicStick')
   width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(77, 141, 255, 0.9);
+  box-shadow: 0 0 8px rgba(8, 180, 188, 0.9);
   animation: ph-breathe 1.8s ease-in-out infinite;
 }
 @keyframes ph-breathe {

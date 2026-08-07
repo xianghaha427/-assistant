@@ -13,5 +13,17 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // 手动分包：压缩主入口首屏 JS，第三方库独立缓存提升二次加载命中率
+        manualChunks: {
+          'chunk-vue': ['vue', 'vue-router'],
+          'chunk-element': ['element-plus'],
+          'chunk-echarts': ['echarts', 'zrender']
+        }
+      }
+    }
   }
 })

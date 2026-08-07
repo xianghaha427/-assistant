@@ -103,8 +103,8 @@
           <el-table-column prop="action" label="操作" min-width="180" />
           <el-table-column prop="result" label="结果" width="100">
             <template #default="{ row }">
-              <span :class="row.result === 'SUCCESS' ? 'status-active' : 'status-error'">
-                {{ row.result === 'SUCCESS' ? '成功' : '失败' }}
+              <span :class="(row.result || '').toLowerCase() === 'success' ? 'status-active' : 'status-error'">
+                {{ (row.result || '').toLowerCase() === 'success' ? '成功' : '失败' }}
               </span>
             </template>
           </el-table-column>

@@ -290,7 +290,7 @@ async function handleChangePassword() {
   color: #fff;
   font-size: 28px;
   font-weight: 600;
-  box-shadow: 0 0 30px rgba(77, 141, 255, 0.4);
+  box-shadow: 0 0 30px rgba(8, 180, 188, 0.4);
 }
 
 .avatar-overlay {

@@ -1,5 +1,6 @@
 package com.finoffice.config;
 
+import cn.dev33.satoken.context.SaHolder;
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,12 +16,26 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("")
+    @Value("${app.upload-path:./uploads}")
     private String uploadPath;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new SaInterceptor(handle -> StpUtil.checkLogin()))
+        registry.addInterceptor(new SaInterceptor(handle -> {
+                    // 基础登录校验
+                    StpUtil.checkLogin();
+                    String uri = SaHolder.getRequest().getRequestPath();
+                    String method = SaHolder.getRequest().getMethod();
+                    // 管理后台：仅 ADMIN
+                    if (uri.startsWith("/api/admin/")) {
+                        StpUtil.checkRole("ADMIN");
+                    }
+                    // 智能体写操作：仅 ADMIN（GET 保持登录即可）
+                    if (uri.startsWith("/api/agents/")
+                            && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
+                        StpUtil.checkRole("ADMIN");
+                    }
+                }))
                 .addPathPatterns("/api/**")
                 .excludePathPatterns("/api/auth/login", "/api/health", "/error");
     }
