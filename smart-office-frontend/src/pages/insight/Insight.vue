@@ -4,7 +4,7 @@
     <div class="insight-header">
       <div class="insight-title-wrap">
         <div class="insight-icon">
-          <el-icon><TrendCharts /></el-icon>
+          <TrendingUp :size="22" />
         </div>
         <div>
           <h1 class="page-title">行业洞察</h1>
@@ -20,6 +20,7 @@
 
 <script setup>
 import AiChat from '../AiChat.vue'
+import { TrendingUp } from 'lucide-vue-next'
 </script>
 
 <style scoped>

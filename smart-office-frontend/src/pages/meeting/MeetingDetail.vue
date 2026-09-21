@@ -16,6 +16,13 @@
       </div>
       <div class="header-actions">
         <el-button
+          v-if="meeting.status === 'completed'"
+          size="small"
+          @click="handlePushDingtalk"
+        >
+          推送到钉钉
+        </el-button>
+        <el-button
           v-if="meeting.status === 'failed'"
           type="primary"
           size="small"
@@ -85,7 +92,7 @@
       <div class="detail-side">
         <div class="card actions-card">
           <div class="section-title">
-            <span class="title-icon">✅</span>
+            <CheckCircle2 :size="16" class="title-icon" />
             待办事项
             <span class="action-count">{{ actions.length }}</span>
           </div>
@@ -118,7 +125,7 @@
     <!-- 纪要未生成 / 生成中 / 生成失败 -->
     <div class="detail-body" v-else-if="!loading">
       <div class="no-summary card" :class="{ 'is-failed': meeting.status === 'failed' }">
-        <div class="no-summary-icon">{{ meeting.status === 'failed' ? '⚠' : '✨' }}</div>
+        <div class="no-summary-icon"><AlertTriangle v-if="meeting.status === 'failed'" :size="28" /><Sparkles v-else :size="28" /></div>
         <div class="no-summary-title">
           {{ meeting.status === 'processing' ? 'AI 生成中…' : meeting.status === 'failed' ? '纪要生成失败' : '纪要尚未生成' }}
         </div>
@@ -182,7 +189,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getMeeting, getSummary, getActions, generateSummary } from '../../api/meeting.js'
 import { convertFromAction } from '../../api/task.js'
-import { getUserOptions } from '../../api/index.js'
+import { getUserOptions, pushMeetingToDingtalk } from '../../api/index.js'
+import { CheckCircle2, AlertTriangle, Sparkles } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -241,6 +249,15 @@ function startPoll() {
 
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+async function handlePushDingtalk() {
+  try {
+    await pushMeetingToDingtalk(meeting.value.id)
+    ElMessage.success('已推送到钉钉群')
+  } catch (e) {
+    ElMessage.error('推送失败')
+  }
 }
 
 async function handleRegenerate() {

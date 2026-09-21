@@ -9,14 +9,13 @@ import { writerGenerate } from '../api/writer'
 export function useWriter(type) {
   const result = ref('')
   const loading = ref(false)
-  /** 命中的生成通道：dify / deepseek / mock */
+  /** 命中的生成通道：dify / mock */
   const source = ref('')
   /** 当前流式请求的 AbortController（组件卸载时中断） */
   let controller = null
 
   const sourceLabels = {
     dify: 'Dify 办公写作助手',
-    deepseek: 'DeepSeek 直连',
     mock: '演示模板'
   }
 

@@ -2,7 +2,6 @@ package com.finoffice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.finoffice.config.DeepSeekConfig;
 import com.finoffice.entity.AgentConfig;
 import com.finoffice.entity.BriefingRecord;
 import com.finoffice.mapper.AgentConfigMapper;
@@ -21,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 行业简报服务
- * 生成链路（三级降级）：agent#3 行业洞察（Dify chat 通道）→ DeepSeek 直连 → Mock 兜底
+ * 生成链路：agent#3 行业洞察（Dify chat 通道）→ Mock 兜底
  * 幂等保证：briefing_record.brief_date 唯一键 uk_date，同日已成功生成不重复生成；
  * force=true 时允许覆盖重新生成（existing 记录转更新，uk_date 仍保证同日一条）
  */
@@ -38,13 +37,13 @@ public class BriefingService {
     private final BriefingRecordMapper briefingMapper;
     private final AgentConfigMapper agentConfigMapper;
     private final DifyService difyService;
-    private final DeepSeekService deepSeekService;
-    private final DeepSeekConfig deepSeekConfig;
 
     @Value("${dify.base-url:}")
     private String difyBaseUrl;
 
     /** 防止并发触发重复生成（定时任务 / 手动触发 / 前端连点互斥） */
+    private final NotificationService notificationService;
+    private final DingTalkService dingTalkService;
     private final AtomicBoolean generating = new AtomicBoolean(false);
 
     /** 按日期查询简报（可能为 null） */
@@ -80,9 +79,9 @@ public class BriefingService {
      * - force=false（默认）：当日已有 success 记录时直接返回（source=existing），不重复生成
      * - force=true：忽略已有 success 记录，重新生成并覆盖（existing 转更新；
      *   并发场景下 insert 冲突 uk_date 亦转更新，同日始终仅一条）
-     * - 当日为 failed 记录或无记录：三级降级生成，失败重试 2 次后标 status=failed
+     * - 当日为 failed 记录或无记录：Dify 优先，失败后 Mock，失败重试 2 次后标 status=failed
      *
-     * @return record=简报记录；source=实际走的通道（dify/deepseek/mock/existing/running/failed）
+     * @return record=简报记录；source=实际走的通道（dify/mock/existing/running/failed）
      */
     public GenerateResult generate(LocalDate briefDate, boolean force) {
         BriefingRecord existing = getByDate(briefDate);
@@ -135,6 +134,18 @@ public class BriefingService {
                 source = "failed";
             }
             save(rec, existing != null);
+            // 通知 + 钉钉推送
+            if ("success".equals(rec.getStatus())) {
+                try {
+                    notificationService.broadcast("briefing", "今日行业简报已生成",
+                            rec.getTitle() + "，点击查看完整内容", "/briefing");
+                    dingTalkService.sendText("【恒生智能办公助手 今日简报】\n" + rec.getTitle()
+                            + "\n---\n" + (content != null ? content.substring(0, Math.min(content.length(), 200)) : "")
+                            + "\n...\n查看全文：http://localhost:5173/briefing");
+                } catch (Exception ex) {
+                    log.warn("简报通知/推送失败: {}", ex.getMessage());
+                }
+            }
             return new GenerateResult(rec, source);
         } finally {
             generating.set(false);
@@ -147,9 +158,9 @@ public class BriefingService {
     }
 
     /**
-     * 三级降级生成：Dify → DeepSeek → Mock（Mock 永不失败，保证演示不空）
+     * 降级生成：Dify → Mock（Mock 永不失败，保证演示不空）
      *
-     * @return [0]=全文内容 [1]=通道标识 dify/deepseek/mock
+     * @return [0]=全文内容 [1]=通道标识 dify/mock
      */
     private String[] generateWithFallback(String query, LocalDate briefDate) {
         AgentConfig agent = agentConfigMapper.selectById(INSIGHT_AGENT_ID);
@@ -166,33 +177,13 @@ public class BriefingService {
                 if (!content.isBlank()) {
                     return new String[]{content, "dify"};
                 }
-                log.warn("Dify 返回空内容，降级 DeepSeek");
+                log.warn("Dify 返回空内容，降级 Mock");
             } catch (Exception e) {
-                log.warn("Dify 调用失败，降级 DeepSeek：{}", e.getMessage());
+                log.warn("Dify 调用失败，降级 Mock：{}", e.getMessage());
             }
         }
 
-        // 级别2：DeepSeek 直连（沿用智能体 systemPrompt）
-        if (deepSeekConfig.isEnabled() && deepSeekConfig.getApiKey() != null
-                && !deepSeekConfig.getApiKey().isBlank()) {
-            try {
-                String systemPrompt = agent != null && agent.getSystemPrompt() != null
-                        && !agent.getSystemPrompt().isBlank()
-                        ? agent.getSystemPrompt()
-                        : "你是一名资深金融行业分析师，擅长撰写专业、结构清晰的金融行业日报。";
-                StringBuilder sb = new StringBuilder();
-                deepSeekService.streamChat(systemPrompt, query, sb::append, () -> { });
-                String content = sb.toString().trim();
-                if (!content.isBlank()) {
-                    return new String[]{content, "deepseek"};
-                }
-                log.warn("DeepSeek 返回空内容，降级 Mock");
-            } catch (Exception e) {
-                log.warn("DeepSeek 调用失败，降级 Mock：{}", e.getMessage());
-            }
-        }
-
-        // 级别3：Mock 兜底（结构合理的示例简报，保证演示不空）
+        // 级别2：Mock 兜底（结构合理的示例简报，保证演示不空）
         return new String[]{mockBriefing(briefDate), "mock"};
     }
 
@@ -242,7 +233,7 @@ public class BriefingService {
                 + "## 四、风险提示\n"
                 + "关注海外市场波动对风险偏好的传导影响；部分中小金融机构资产质量承压，"
                 + "建议持续跟踪信用利差变化，做好流动性管理与合规风控。\n\n"
-                + "> 本简报由 FinPilot 智能引擎自动生成（演示模式），仅供参考，不构成投资建议。";
+                + "> 本简报由恒生智能办公助手自动生成（演示模式），仅供参考，不构成投资建议。";
     }
 
     /** 生成结果：记录 + 实际通道 */

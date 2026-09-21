@@ -1,3 +1,6 @@
+-- 确保初始化脚本以 UTF-8 解析，避免中文种子数据被按 latin1 二次编码产生乱码
+SET NAMES utf8mb4;
+
 -- ============================================================
 -- 金融企业智能办公提效平台 - 数据库初始化脚本（幂等，可重复执行）
 -- ============================================================
@@ -85,6 +88,8 @@ CREATE TABLE IF NOT EXISTS agent_config (
     input_variable VARCHAR(32) DEFAULT NULL COMMENT 'workflow应用输入变量名',
     system_prompt  TEXT,
     tools_json     TEXT,
+    engine         VARCHAR(16) NOT NULL DEFAULT 'dify' COMMENT '知识问答引擎通道:native自研/dify云端',
+    model_channel  VARCHAR(16) NOT NULL DEFAULT 'local' COMMENT '模型通道:local本地Ollama安全通道',
     enabled        TINYINT DEFAULT 1,
     create_time    DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -123,12 +128,12 @@ INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES
 (4, 3), (5, 3), (6, 3), (7, 2), (8, 2);
 
 -- 智能体种子数据（dify_app_id 密钥只存数据库，不写入本文件）
-INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, input_variable, system_prompt, tools_json, enabled) VALUES
-(1, '企业知识问答助手', '解答公司制度、流程规范、业务操作等企业知识问题，支持知识检索与智能兜底', 'chat', '', 'chat', NULL, NULL, NULL, 1),
-(2, '会议纪要助手', '粘贴会议转写文本，自动生成结构化纪要、决议与待办拆解（含责任人/截止时间）', 'document', '', 'chat', 'meeting_text', NULL, NULL, 1),
-(3, '行业洞察助手', '金融行业动态分析、政策解读与市场趋势洞察，支持图表可视化', 'trend', '', 'chat', NULL, NULL, NULL, 1),
-(4, 'PPT大纲生成助手', '输入主题一键生成结构化PPT内容（大纲/每页要点/演讲备注/布局建议）', 'ppt', '', 'workflow', 'topic', NULL, NULL, 1),
-(5, '办公写作助手', '公文、汇报、邮件、总结等办公文案的智能撰写与润色', 'document', '', 'chat', NULL, NULL, NULL, 1);
+INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, input_variable, system_prompt, tools_json, engine, model_channel, enabled) VALUES
+(1, '企业知识问答助手', '解答公司制度、流程规范、业务操作等企业知识问题，支持知识检索与智能兜底', 'chat', '', 'chat', NULL, NULL, NULL, 'dify', 'local', 1),
+(2, '会议纪要助手', '粘贴会议转写文本，自动生成结构化纪要、决议与待办拆解（含责任人/截止时间）', 'document', '', 'chat', 'meeting_text', NULL, NULL, 'dify', 'local', 1),
+(3, '行业洞察助手', '金融行业动态分析、政策解读与市场趋势洞察，支持图表可视化', 'trend', '', 'chat', NULL, NULL, NULL, 'dify', 'local', 1),
+(4, 'PPT大纲生成助手', '输入主题一键生成结构化PPT内容（大纲/每页要点/演讲备注/布局建议）', 'ppt', 'app-REVOKED', 'workflow', 'topic', NULL, NULL, 'dify', 'local', 1),
+(5, '办公写作助手', '公文、汇报、邮件、总结等办公文案的智能撰写与润色', 'document', '', 'chat', NULL, NULL, NULL, 'dify', 'local', 1);
 -- ============================ 智能会议模块 ============================
 
 CREATE TABLE IF NOT EXISTS meeting_record (
@@ -171,6 +176,7 @@ CREATE TABLE IF NOT EXISTS kb_document (
   file_type VARCHAR(20) NOT NULL DEFAULT 'text' COMMENT '文件类型: text/pdf/docx',
   file_url VARCHAR(500) COMMENT '文件存储路径',
   content MEDIUMTEXT COMMENT '文档文本内容',
+  category VARCHAR(64) DEFAULT '未分类' COMMENT '文档分类',
   dify_document_id VARCHAR(100) COMMENT 'Dify 中的文档ID',
   status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/indexing/completed/failed/local_only',
   word_count INT DEFAULT 0 COMMENT '字数',

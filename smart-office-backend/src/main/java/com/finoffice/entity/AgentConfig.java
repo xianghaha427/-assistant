@@ -24,6 +24,8 @@ public class AgentConfig {
     private String systemPrompt;
     /** 知识问答引擎通道：native=自研LangChain4j引擎 / dify=Dify云端（默认dify，阶段1双通道） */
     private String engine;
+    /** 模型通道：local=本地Ollama安全通道 */
+    private String modelChannel;
     private String toolsJson;
     private Integer enabled;
     private LocalDateTime createTime;

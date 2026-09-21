@@ -70,6 +70,8 @@ public class SchemaMigrationRunner implements ApplicationRunner {
                     + "description = '金融行业动态分析、政策解读与市场趋势洞察，支持图表可视化', icon = 'trend' WHERE id = 3");
             jdbcTemplate.update("UPDATE agent_config SET name = 'PPT大纲生成助手', "
                     + "description = '输入主题一键生成结构化PPT内容（大纲/每页要点/演讲备注/布局建议）', icon = 'ppt' WHERE id = 4");
+            jdbcTemplate.update("UPDATE agent_config SET dify_app_id = 'app-REVOKED', "
+                    + "dify_mode = 'workflow', input_variable = 'topic' WHERE id = 4");
 
             // 补插办公写作助手（id=5，INSERT IGNORE 幂等）
             jdbcTemplate.update("INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, enabled) "
@@ -145,12 +147,40 @@ public class SchemaMigrationRunner implements ApplicationRunner {
             addColumnIfMissing("agent_config", "engine",
                     "ALTER TABLE agent_config ADD COLUMN engine VARCHAR(16) NOT NULL DEFAULT 'dify' "
                             + "COMMENT '知识问答引擎通道:native自研/dify云端'");
+            // 仅为空时默认走 Dify；管理员在后台切换为 native 后，重启不覆盖。
+            jdbcTemplate.update("UPDATE agent_config SET engine = 'dify' WHERE id = 1 "
+                    + "AND (engine IS NULL OR engine = '')");
             // 知识问答助手(id=1) system_prompt 为空时回填自研引擎默认提示词（仅 NULL/空串时写入，幂等）
             jdbcTemplate.update("UPDATE agent_config SET system_prompt = ? WHERE id = 1 "
                     + "AND (system_prompt IS NULL OR system_prompt = '')",
                     "你是华信证券的企业知识问答助手。请严格基于给定的上下文资料回答问题："
                             + "资料中有明确依据时，给出简洁、专业、结构化的中文回答；"
                             + "资料中没有依据或无法确定时，坦承说明知识库中暂无相关内容，不要编造。");
+
+            // ---- 阶段2：自建 RAG 引擎升级（幂等）----
+            addColumnIfMissing("agent_config", "model_channel",
+                    "ALTER TABLE agent_config ADD COLUMN model_channel VARCHAR(16) NOT NULL DEFAULT 'local' "
+                            + "COMMENT '模型通道:local本地Ollama安全通道'");
+            jdbcTemplate.update("UPDATE agent_config SET model_channel = 'local' WHERE model_channel IS NULL "
+                    + "OR model_channel = '' OR model_channel <> 'local'");
+
+            // ---- 阶段3：通知中心 & 安全模块（幂等）----
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS sys_notification ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                    + "user_id BIGINT NOT NULL COMMENT '接收用户ID',"
+                    + "type VARCHAR(32) NOT NULL COMMENT '通知类型:meeting/briefing/task/system',"
+                    + "title VARCHAR(200) NOT NULL COMMENT '通知标题',"
+                    + "content VARCHAR(500) COMMENT '通知内容',"
+                    + "link VARCHAR(200) COMMENT '点击跳转链接',"
+                    + "is_read TINYINT NOT NULL DEFAULT 0 COMMENT '0未读/1已读',"
+                    + "create_time DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                    + "INDEX idx_user_read (user_id, is_read)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内通知'");
+
+            // ---- 阶段3：知识库分类标签（幂等）----
+            addColumnIfMissing("kb_document", "category",
+                    "ALTER TABLE kb_document ADD COLUMN category VARCHAR(50) DEFAULT '未分类' "
+                            + "COMMENT '文档分类（制度/流程/FAQ/项目等）'");
 
             log.info("SchemaMigrationRunner 迁移完成");
         } catch (Exception e) {

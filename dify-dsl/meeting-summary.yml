@@ -386,3 +386,7 @@ workflow:
       targetPosition: left
       type: custom
       width: 244
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.6

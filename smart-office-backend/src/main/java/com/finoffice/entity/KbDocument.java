@@ -18,6 +18,7 @@ public class KbDocument {
     private String fileType;
     private String fileUrl;
     private String content;
+    private String category;
     private String difyDocumentId;
     private String status;
     private Integer wordCount;

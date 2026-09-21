@@ -10,7 +10,8 @@ export default defineConfig({
       // 开发环境代理到 Spring Boot 后端，实现前后端联调
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true
+        changeOrigin: true,
+        timeout: 300000
       }
     }
   },

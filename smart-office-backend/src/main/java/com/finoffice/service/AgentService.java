@@ -17,6 +17,7 @@ import java.util.List;
 public class AgentService {
 
     private final AgentConfigMapper agentMapper;
+    private static final long AGENT_ID_KNOWLEDGE = 1L;
 
     public List<AgentConfig> list() {
         return agentMapper.selectList(
@@ -38,6 +39,9 @@ public class AgentService {
     }
 
     public void update(Long id, AgentConfig agent) {
+        if (!Long.valueOf(AGENT_ID_KNOWLEDGE).equals(id) && "native".equalsIgnoreCase(agent.getEngine())) {
+            throw new BizException("只有企业知识问答助手支持切换为自研引擎");
+        }
         agent.setId(id);
         if (agent.getEnabled() == null) {
             agent.setEnabled(1);

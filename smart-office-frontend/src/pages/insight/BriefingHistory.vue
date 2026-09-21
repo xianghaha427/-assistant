@@ -4,7 +4,7 @@
     <div class="briefing-header">
       <div class="briefing-title-wrap">
         <div class="briefing-icon">
-          <el-icon><Document /></el-icon>
+          <Newspaper :size="20" />
         </div>
         <div>
           <h1 class="page-title">行业简报</h1>
@@ -12,7 +12,7 @@
         </div>
       </div>
       <el-button type="primary" :loading="generating" :disabled="generating" @click="generateNow">
-        <el-icon v-if="!generating" class="gen-btn-icon"><MagicStick /></el-icon>
+        <Sparkles v-if="!generating" :size="16" class="gen-btn-icon" />
         {{ generating ? '生成中…' : '立即生成今日简报' }}
       </el-button>
     </div>
@@ -43,8 +43,9 @@
         </el-table-column>
         <template #empty>
           <div class="table-empty">
-            <div class="empty-icon">📰</div>
-            暂无简报记录，点击右上角「立即生成今日简报」
+            <Newspaper :size="36" color="var(--border-strong)" />
+            <span>暂无简报记录</span>
+            <span style="font-size:12px;color:var(--text-tertiary)">点击右上角「立即生成今日简报」</span>
           </div>
         </template>
       </el-table>
@@ -62,7 +63,7 @@
     </div>
 
     <!-- ====== 全文弹窗（Markdown 渲染） ====== -->
-    <el-dialog v-model="detailVisible" :title="detailTitle" width="720px" top="6vh">
+    <el-dialog v-model="detailVisible" :title="detailTitle" width="960px" top="2vh">
       <div class="briefing-content md-body" v-html="renderedContent"></div>
     </el-dialog>
   </div>
@@ -71,6 +72,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Newspaper, Sparkles } from 'lucide-vue-next'
 import { getBriefingHistory, getTodayBriefing, generateBriefingNow } from '../../api/briefing.js'
 import { renderMd } from '../../utils/markdown.js'
 
@@ -254,22 +256,18 @@ onBeforeUnmount(stopPolling)
 .gen-btn-icon { margin-right: 6px; }
 
 /* ====== 列表卡片 ====== */
-.list-card { padding: 8px 12px 12px; }
+.list-card { min-height: calc(100vh - 200px); padding: 8px 12px 12px; display: flex; flex-direction: column; }
+.list-card :deep(.el-table) { flex: 1; }
+.list-card .pager { margin-top: auto; }
 .briefing-table { cursor: pointer; }
 .row-title {
   color: var(--text-primary);
   font-weight: 500;
 }
 .table-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 28px 0;
-  font-size: 13px;
-  color: var(--text-tertiary);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 48px 0; font-size: 13px; color: var(--text-tertiary);
 }
-.empty-icon { font-size: 26px; opacity: 0.85; }
 .pager {
   display: flex;
   justify-content: flex-end;
@@ -279,8 +277,9 @@ onBeforeUnmount(stopPolling)
 /* ====== 全文弹窗 ====== */
 .briefing-content {
   margin: 0;
-  padding: 18px 20px;
-  max-height: 68vh;
+  padding: 20px 24px;
+  max-height: 78vh;
+  min-height: 50vh;
   overflow-y: auto;
   border-radius: 10px;
   background: var(--surface);

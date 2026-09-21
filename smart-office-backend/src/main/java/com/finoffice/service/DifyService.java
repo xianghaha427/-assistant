@@ -90,6 +90,8 @@ public class DifyService {
             onChunk.accept(chunk);
         };
         for (int attempt = 0; attempt < 2; attempt++) {
+        // 剥离 Dify 应用内模型的深度思考输出 <think>...</think>，仅透传正式回答
+        ThinkingFilter thinkingFilter = new ThinkingFilter();
         try {
             HttpResponse<java.io.InputStream> response =
                     httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -127,9 +129,16 @@ public class DifyService {
                             if ("message".equals(event)) {
                                 String answer = node.path("answer").asText(null);
                                 if (answer != null && !answer.isEmpty()) {
-                                    guardedChunk.accept(answer);
+                                    String filtered = thinkingFilter.feed(answer);
+                                    if (filtered != null && !filtered.isEmpty()) {
+                                        guardedChunk.accept(filtered);
+                                    }
                                 }
                             } else if ("message_end".equals(event)) {
+                                String tail = thinkingFilter.flush();
+                                if (tail != null && !tail.isEmpty()) {
+                                    guardedChunk.accept(tail);
+                                }
                                 onComplete.run();
                                 return;
                             } else if ("error".equals(event)) {
@@ -145,6 +154,10 @@ public class DifyService {
                     }
                 }
                 // 流自然结束（未收到 message_end 也视为完成）
+                String tail = thinkingFilter.flush();
+                if (tail != null && !tail.isEmpty()) {
+                    guardedChunk.accept(tail);
+                }
                 onComplete.run();
                 return;
             }
@@ -327,6 +340,68 @@ public class DifyService {
         DifyChatRequest(String query, String conversationId, String user, List<Map<String, Object>> files) {
             this(new java.util.HashMap<>(), query, "streaming", conversationId, user,
                     files == null || files.isEmpty() ? null : files);
+        }
+    }
+
+    /**
+     * 流式剥离 Dify 应用内模型的深度思考输出。
+     * 开启深度思考的模型会把推理过程用 {@code <think>...</think>} 包裹
+     * 拼在正式回答之前；
+     * 本过滤器按标签边界剥离，仅透传 {@code <think>} 之外的正式回答内容。
+     */
+    private static final class ThinkingFilter {
+        private static final String OPEN = "<think>";
+        private static final String CLOSE = "</think>";
+        private final StringBuilder carry = new StringBuilder();
+        private boolean inThink = false;
+
+        /** 输入一段流式文本，返回应对外输出的正式回答部分（可能为 null 表示本次无输出）。 */
+        String feed(String chunk) {
+            if (chunk == null || chunk.isEmpty()) {
+                return null;
+            }
+            carry.append(chunk);
+            String buf = carry.toString();
+            StringBuilder out = new StringBuilder();
+            int idx = 0;
+            while (idx < buf.length()) {
+                if (!inThink) {
+                    int open = buf.indexOf(OPEN, idx);
+                    if (open >= 0) {
+                        out.append(buf, idx, open);
+                        inThink = true;
+                        idx = open + OPEN.length();
+                    } else {
+                        // 无完整 <think>：输出到安全位置，末尾保留可能被拆分的 <think> 前缀
+                        int safeEnd = Math.max(idx, buf.length() - (OPEN.length() - 1));
+                        out.append(buf, idx, safeEnd);
+                        idx = safeEnd;
+                        break;
+                    }
+                } else {
+                    int close = buf.indexOf(CLOSE, idx);
+                    if (close >= 0) {
+                        inThink = false;
+                        idx = close + CLOSE.length();
+                    } else {
+                        // 无完整 </think>：全部丢弃，末尾保留可能被拆分的 </think> 前缀
+                        idx = Math.max(idx, buf.length() - (CLOSE.length() - 1));
+                        break;
+                    }
+                }
+            }
+            carry.setLength(0);
+            if (idx < buf.length()) {
+                carry.append(buf, idx, buf.length());
+            }
+            return out.length() > 0 ? out.toString() : null;
+        }
+
+        /** 流结束时调用，输出缓冲中残留的正式回答内容；若仍处于 {@code <think>} 块内则丢弃。 */
+        String flush() {
+            String remaining = inThink ? null : carry.toString();
+            carry.setLength(0);
+            return (remaining == null || remaining.isEmpty()) ? null : remaining;
         }
     }
 }

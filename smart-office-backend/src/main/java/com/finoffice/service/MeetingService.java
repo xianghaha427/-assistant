@@ -47,9 +47,10 @@ public class MeetingService {
     private final DingTalkService dingTalkService;
     private final DataScopeHelper dataScopeHelper;
     private final DifyService difyService;
-    private final DeepSeekService deepSeekService;
     private final AgentConfigMapper agentConfigMapper;
     private final SysUserMapper userMapper;
+    private final AudioTranscriptionService whisperService;
+    private final NotificationService notificationService;
 
     /** 会议纪要助手智能体 ID（agent_config） */
     private static final long SUMMARY_AGENT_ID = 2L;
@@ -164,6 +165,15 @@ public class MeetingService {
                         "会议ID " + recordId + "：" + result.failReason());
             }
             saveActionItems(record.getId(), summaryResp);
+            // 发送通知
+            try {
+                String notifTitle = "会议纪要已生成：" + record.getTitle();
+                notificationService.send(record.getUserId(), "meeting", notifTitle,
+                        "AI 已完成会议纪要生成，包含议题总结和待办事项，请查看详情。",
+                        "/meeting/" + record.getId());
+            } catch (Exception ex) {
+                log.warn("通知发送失败: {}", ex.getMessage());
+            }
         } catch (Exception e) {
             log.error("AI生成会议纪要失败", e);
             record.setStatus("failed");
@@ -258,8 +268,7 @@ public class MeetingService {
     /**
      * 调用 AI 生成会议纪要，三级降级（每级独立 try-catch，不阻塞）：
      * 1. Dify 会议纪要助手（chatflow，可携带纪要文档 files 直传）
-     * 2. DeepSeek 直连（仅文本通道）
-     * 3. Mock 兜底（演示模式，UI 明示）
+     * 2. Mock 兜底（演示模式，UI 明示）
      * 仅文件无文字场景：Dify 失败即返回 json=null + failReason，由调用方置 failed（不造假纪要）。
      */
     private SummaryResult callAiForSummary(Long userId, String rawText, List<String> fileIds) {
@@ -306,32 +315,16 @@ public class MeetingService {
             log.warn("Dify 纪要调用失败: {}", failReason);
         }
 
-        // 仅文件场景：Dify 通道失败即整体失败（DeepSeek 无法读取 Dify 文件，Mock 属假纪要）
+        // 仅文件场景：Dify 通道失败即整体失败（Mock 属假纪要）
         if (!hasText) {
             log.error("纪要仅文件无文字且 Dify 通道不可用，置为失败: {}", failReason);
             return new SummaryResult(null, "文档解析失败：" + failReason, false);
         }
 
-        // ---- 第2级：DeepSeek 直连（仅文本通道） ----
-        try {
-            StringBuilder sb = new StringBuilder();
-            deepSeekService.streamChat("你是会议纪要助手，只输出JSON，不要markdown和额外说明。",
-                    SUMMARY_PROMPT + rawText, sb::append, () -> { });
-            String result = extractJson(sb.toString());
-            if (result != null) {
-                log.info("会议纪要由 DeepSeek 直连生成，长度={}", result.length());
-                return new SummaryResult(result, failReason, false);
-            }
-            failReason = (failReason == null ? "" : failReason + "；") + "DeepSeek返回空内容";
-        } catch (Exception e) {
-            failReason = (failReason == null ? "" : failReason + "；") + "DeepSeek直连失败: " + errDigest(e);
-            log.warn("DeepSeek 直连失败: {}", e.getMessage());
-        }
-
-        // ---- 第3级：Mock 兜底（演示模式，UI 明示） ----
-        log.warn("所有 AI 通道不可用，使用 Mock 纪要（演示模式）");
+        // ---- 第2级：Mock 兜底（演示模式，UI 明示） ----
+        log.warn("Dify 通道不可用，使用 Mock 纪要（演示模式）");
         return new SummaryResult(MOCK_SUMMARY,
-                (failReason == null ? "" : failReason + "；") + "所有AI通道不可用，已降级演示模式", true);
+                (failReason == null ? "" : failReason + "；") + "Dify通道不可用，已降级演示模式", true);
     }
 
     /** 纪要生成结果：json=null 表示硬失败（仅文件场景），failReason 为错误摘要，mock 标记演示模式 */
@@ -595,5 +588,25 @@ public class MeetingService {
             }
         }
         return new ArrayList<>();
+    }
+
+    /** 语音转写：上传会议录音 → Faster-Whisper 转写 → 返回文本（阶段3） */
+    public String transcribeAudio(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException("音频文件不能为空");
+        }
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "recording.wav";
+        try {
+            String text = whisperService.transcribe(file.getBytes(), originalName);
+            if (text == null || text.isBlank()) {
+                throw new BizException("语音转写结果为空，请检查音频内容是否包含有效语音");
+            }
+            return text;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("语音转写失败: {}", e.getMessage());
+            throw new BizException("语音转写失败，请重试或手动粘贴会议文本: " + e.getMessage());
+        }
     }
 }

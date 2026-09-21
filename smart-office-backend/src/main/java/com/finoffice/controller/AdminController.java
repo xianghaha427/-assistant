@@ -87,4 +87,24 @@ public class AdminController {
         adminService.checkAdmin();
         return R.ok(adminService.listLogs(page, size));
     }
+
+    /** 当前知识库回答引擎 */
+    @GetMapping("/knowledge-engine")
+    public R<Map<String, Object>> getKnowledgeEngine() {
+        adminService.checkAdmin();
+        return R.ok(adminService.getKnowledgeEngine());
+    }
+
+    @Data
+    public static class KnowledgeEngineReq {
+        private String engine;
+    }
+
+    /** 切换知识库回答引擎：dify / native */
+    @PutMapping("/knowledge-engine")
+    public R<Void> updateKnowledgeEngine(@RequestBody KnowledgeEngineReq req) {
+        adminService.checkAdmin();
+        adminService.updateKnowledgeEngine(req.getEngine());
+        return R.ok();
+    }
 }

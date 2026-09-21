@@ -19,7 +19,7 @@
         </div>
 
         <div class="column-body">
-          <div v-if="!(board[col.key] || []).length" class="column-empty">暂无任务</div>
+          <div v-if="!(board[col.key] || []).length" class="column-empty"><Columns3 :size="24" /><span>暂无任务</span></div>
 
           <div class="task-card card" v-for="t in board[col.key]" :key="t.id">
             <div class="task-title">{{ t.title }}</div>
@@ -27,7 +27,7 @@
 
             <div class="task-tags">
               <span class="priority-tag" :class="t.priority">{{ PRIORITY_MAP[t.priority] || '中' }}</span>
-              <span v-if="t.source_meeting_id" class="source-tag">📋 来自会议</span>
+              <span v-if="t.source_meeting_id" class="source-tag"><Calendar :size="12" /> 来自会议</span>
             </div>
 
             <div class="task-footer">
@@ -96,6 +96,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getTaskBoard, createTask, updateTask } from '../../api/task.js'
+import { Columns3, Calendar } from 'lucide-vue-next'
 
 const columns = [
   { key: 'pending', label: '待办' },
@@ -244,18 +245,18 @@ function isOverdue(t) {
 
 .column-body { display: flex; flex-direction: column; gap: 10px; }
 .column-empty {
-  text-align: center;
-  color: var(--text-tertiary);
-  font-size: 12.5px;
-  padding: 40px 0;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: var(--text-tertiary); font-size: 13px; padding: 48px 0;
 }
 
 /* ====== 任务卡片 ====== */
 .task-card {
   padding: 14px 16px;
   border-radius: var(--radius-sm);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
+.task-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
 .task-card:hover {
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);

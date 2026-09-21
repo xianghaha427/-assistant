@@ -2,11 +2,9 @@ package com.finoffice.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.finoffice.common.BizException;
-import com.finoffice.config.DeepSeekConfig;
 import com.finoffice.config.SseHeartbeat;
 import com.finoffice.entity.AgentConfig;
 import com.finoffice.mapper.AgentConfigMapper;
-import com.finoffice.service.DeepSeekService;
 import com.finoffice.service.DifyService;
 import jakarta.annotation.Resource;
 import lombok.Data;
@@ -25,10 +23,9 @@ import java.util.concurrent.ExecutorService;
  * 按场景在消息头部拼入 [周报生成]/[邮件撰写]/[通知公告] 标签，
  * 与 dify-dsl/writing-assistant.yml 问题分类器的路由标签保持一致。
  *
- * 三级降级链（每级 try-catch，SSE 流式输出不中断）：
+ * 降级链（SSE 流式输出不中断）：
  *   1. Dify agent#5（chat SSE 转发）
- *   2. DeepSeek 直连（复用现有直连配置 + 场景化提示词）
- *   3. Mock 模板文案
+ *   2. Mock 模板文案
  */
 @Slf4j
 @RestController
@@ -39,8 +36,6 @@ public class WritingController {
     private static final long AGENT_ID_WRITER = 5L;
 
     private final DifyService difyService;
-    private final DeepSeekService deepSeekService;
-    private final DeepSeekConfig deepSeekConfig;
     private final AgentConfigMapper agentConfigMapper;
     private final SseHeartbeat heartbeat;
 
@@ -71,7 +66,7 @@ public class WritingController {
 
     /**
      * 生成写作文稿（SSE 流式返回）
-     * 事件：source（命中的生成通道 dify/deepseek/mock）、message（内容块）、done（结束）
+     * 事件：source（命中的生成通道 dify/mock）、message（内容块）、done（结束）
      */
     @PostMapping(value = "/generate", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter generate(@RequestBody WriterReq req) {
@@ -110,30 +105,13 @@ public class WritingController {
                     );
                     return;
                 } catch (Exception e) {
-                    log.warn("写作助手 Dify 调用失败，降级到 DeepSeek: {}", e.getMessage());
+                    log.warn("写作助手 Dify 调用失败，降级到 Mock: {}", e.getMessage());
                 }
             } else {
-                log.info("写作助手 agent#5 未配置 Dify 密钥或 Dify 地址为空，降级到 DeepSeek");
+                log.info("写作助手 agent#5 未配置 Dify 密钥或 Dify 地址为空，降级到 Mock");
             }
 
-            // ---------- 优先级2：DeepSeek 直连 ----------
-            if (deepSeekConfig.isEnabled() && deepSeekConfig.getApiKey() != null
-                    && !deepSeekConfig.getApiKey().isBlank()) {
-                try {
-                    sendSource(emitter, "deepseek");
-                    deepSeekService.streamChat(
-                            buildSystemPrompt(req.getType(), agent),
-                            taggedMessage,
-                            chunk -> sendMessage(emitter, chunk),
-                            () -> finish(emitter)
-                    );
-                    return;
-                } catch (Exception e) {
-                    log.warn("写作助手 DeepSeek 直连失败，降级到 Mock: {}", e.getMessage());
-                }
-            }
-
-            // ---------- 优先级3：Mock 模板文案 ----------
+            // ---------- 优先级2：Mock 模板文案 ----------
             sendSource(emitter, "mock");
             sendMockStream(emitter, mockAnswer(req.getType(), req.getPoints()));
         });
@@ -176,25 +154,6 @@ public class WritingController {
             sb.append("\n语气要求：").append(req.getTone().trim());
         }
         return sb.toString();
-    }
-
-    /**
-     * DeepSeek 直连降级时的场景化系统提示词
-     * （agent#5 配置了 systemPrompt 则优先复用）
-     */
-    private String buildSystemPrompt(String type, AgentConfig agent) {
-        if (agent != null && agent.getSystemPrompt() != null && !agent.getSystemPrompt().isBlank()) {
-            return agent.getSystemPrompt();
-        }
-        String persona = "你是华信证券智能办公平台的公文写作专家，语言正式简练、突出量化成果，不得虚构用户未提供的数据。";
-        return switch (type) {
-            case "weekly" -> persona
-                    + " 请根据用户提供的本周工作要点，按以下结构输出周报：\n一、本周工作总结（分条列出成果与数据）\n二、下周工作计划（分条列出）\n三、风险与需协调事项（无则写\"暂无\"）。只输出周报正文。";
-            case "email" -> persona
-                    + " 请根据用户提供的邮件诉求，按场景（汇报/请求/通知/致歉）输出规范商务邮件，结构为：主题行、称呼、正文、落款占位（落款写【落款占位】，不得编造姓名日期）。只输出邮件正文。";
-            default -> persona
-                    + " 请根据用户提供的公告要点，按企业公文格式输出通知公告，结构为：关于……的通知（标题）、主送对象、正文（背景+分条安排+执行要求）、落款与日期占位（写【落款与日期占位】）。只输出公告正文。";
-        };
     }
 
     /** Mock 兜底模板文案（按场景） */

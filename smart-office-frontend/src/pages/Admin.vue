@@ -5,6 +5,18 @@
         <h2 class="page-title">系统<span class="grad-text">管理</span></h2>
         <div class="page-subtitle">用户管理、角色配置与操作日志审计</div>
       </div>
+      <div class="engine-switch">
+        <span class="engine-label">知识库回答引擎</span>
+        <el-select
+          v-model="knowledgeEngine"
+          :loading="engineLoading"
+          style="width: 220px"
+          @change="handleKnowledgeEngineChange"
+        >
+          <el-option label="Dify Agent 回答" value="dify" />
+          <el-option label="自研 Agent 回答" value="native" />
+        </el-select>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab" class="admin-tabs">
@@ -20,7 +32,7 @@
             @keyup.enter="loadUsers"
           >
             <template #prefix>
-              <el-icon><Search /></el-icon>
+              <Search :size="16" />
             </template>
           </el-input>
           <el-button type="primary" @click="openCreateUser">＋ 新增用户</el-button>
@@ -82,16 +94,12 @@
         </div>
       </el-tab-pane>
 
-      <!-- 角色管理 -->
-      <el-tab-pane label="角色管理" name="roles">
-        <el-table :data="roles" v-loading="rolesLoading" stripe class="admin-table">
-          <el-table-column prop="roleCode" label="角色编码" width="200" />
-          <el-table-column prop="roleName" label="角色名称" width="200" />
-        </el-table>
-      </el-tab-pane>
-
       <!-- 操作日志 -->
       <el-tab-pane label="操作日志" name="logs">
+        <div class="tab-toolbar">
+          <div class="text-muted">审计平台关键操作与知识库引擎切换记录</div>
+          <el-button text :loading="engineLoading" @click="loadKnowledgeEngine">刷新引擎状态</el-button>
+        </div>
         <el-table :data="logs" v-loading="logsLoading" stripe class="admin-table">
           <el-table-column prop="createTime" label="时间" width="180">
             <template #default="{ row }">
@@ -124,22 +132,6 @@
         </div>
       </el-tab-pane>
 
-      <!-- 智能体引擎（阶段1：知识问答双通道切换） -->
-      <el-tab-pane label="智能体引擎" name="engine">
-        <div v-loading="engineLoading" class="engine-panel">
-          <div class="engine-title">企业知识问答助手 · 回答引擎</div>
-          <div class="engine-desc">
-            自研引擎：平台内置大模型直连回答、数据不出域；Dify 引擎：走云端智能体链路。自研引擎异常时自动回落 Dify。
-          </div>
-          <el-radio-group v-model="engineValue" class="engine-radio">
-            <el-radio value="native">自研引擎（native）</el-radio>
-            <el-radio value="dify">Dify（dify）</el-radio>
-          </el-radio-group>
-          <div class="engine-actions">
-            <el-button type="primary" :loading="engineSaving" @click="handleSaveEngine">保存</el-button>
-          </div>
-        </div>
-      </el-tab-pane>
     </el-tabs>
 
     <!-- 用户创建/编辑弹窗 -->
@@ -165,9 +157,9 @@
           <el-select v-model="userForm.role_codes" multiple placeholder="请选择角色" style="width: 100%">
             <el-option
               v-for="role in roles"
-              :key="role.roleCode"
-              :label="roleLabel(role.roleCode)"
-              :value="role.roleCode"
+              :key="role.role_code"
+              :label="roleLabel(role.role_code)"
+              :value="role.role_code"
             />
           </el-select>
         </el-form-item>
@@ -189,8 +181,17 @@
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
-import { getUsers, createUser, updateUser, deleteUser, getRoles, getLogs, getAgents, updateAgent } from '../api'
+import { Search } from 'lucide-vue-next'
+import {
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  getRoles,
+  getLogs,
+  getKnowledgeEngine,
+  updateKnowledgeEngine
+} from '../api'
 
 const activeTab = ref('users')
 
@@ -215,9 +216,8 @@ const userForm = reactive({
   status: 1
 })
 
-// 角色管理
+// 角色（供用户管理里分配角色的下拉框使用）
 const roles = ref([])
-const rolesLoading = ref(false)
 
 // 操作日志
 const logs = ref([])
@@ -225,11 +225,14 @@ const logsLoading = ref(false)
 const logPage = ref(1)
 const logPageSize = ref(20)
 const logTotal = ref(0)
+const knowledgeEngine = ref('dify')
+const engineLoading = ref(false)
 
 const ROLE_MAP = {
   ADMIN: '管理员',
-  USER: '普通用户',
-  MANAGER: '部门经理'
+  DEPT_MANAGER: '部门负责人',
+  EMPLOYEE: '普通员工',
+  KB_ADMIN: '知识管理员'
 }
 const roleLabel = (code) => ROLE_MAP[code] || code
 
@@ -241,13 +244,15 @@ function formatTime(t) {
 onMounted(() => {
   loadRoles()
   loadUsers()
+  loadKnowledgeEngine()
 })
 
 watch(activeTab, (tab) => {
   if (tab === 'users') loadUsers()
-  else if (tab === 'roles') loadRoles()
-  else if (tab === 'logs') loadLogs()
-  else if (tab === 'engine') loadEngine()
+  else if (tab === 'logs') {
+    loadLogs()
+    loadKnowledgeEngine()
+  }
 })
 
 async function loadUsers() {
@@ -266,11 +271,12 @@ async function loadUsers() {
 }
 
 async function loadRoles() {
-  rolesLoading.value = true
   try {
-    roles.value = await getRoles() || []
-  } finally {
-    rolesLoading.value = false
+    const list = await getRoles()
+    roles.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.error('加载角色列表失败:', e)
+    roles.value = []
   }
 }
 
@@ -285,6 +291,29 @@ async function loadLogs() {
     logTotal.value = data.total || 0
   } finally {
     logsLoading.value = false
+  }
+}
+
+async function loadKnowledgeEngine() {
+  engineLoading.value = true
+  try {
+    const data = await getKnowledgeEngine()
+    knowledgeEngine.value = data.engine || 'dify'
+  } finally {
+    engineLoading.value = false
+  }
+}
+
+async function handleKnowledgeEngineChange(engine) {
+  engineLoading.value = true
+  try {
+    await updateKnowledgeEngine(engine)
+    ElMessage.success(engine === 'native' ? '已切换为自研 Agent 回答' : '已切换为 Dify Agent 回答')
+    await loadLogs()
+  } catch (e) {
+    await loadKnowledgeEngine()
+  } finally {
+    engineLoading.value = false
   }
 }
 
@@ -359,31 +388,6 @@ async function handleDeleteUser(row) {
   await loadUsers()
 }
 
-// 智能体引擎（阶段1：知识问答双通道，读写 agent_config#1 的 engine 列）
-const engineLoading = ref(false)
-const engineSaving = ref(false)
-const engineValue = ref('dify')
-
-async function loadEngine() {
-  engineLoading.value = true
-  try {
-    const list = await getAgents() || []
-    const kbAgent = list.find((a) => a.id === 1)
-    engineValue.value = kbAgent?.engine || 'dify'
-  } finally {
-    engineLoading.value = false
-  }
-}
-
-async function handleSaveEngine() {
-  engineSaving.value = true
-  try {
-    await updateAgent(1, { engine: engineValue.value })
-    ElMessage.success('引擎配置已保存')
-  } finally {
-    engineSaving.value = false
-  }
-}
 </script>
 
 <style scoped>
@@ -392,7 +396,24 @@ async function handleSaveEngine() {
 }
 
 .admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 20px;
+  gap: 16px;
+}
+
+.engine-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.engine-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .admin-tabs {
@@ -484,31 +505,4 @@ async function handleSaveEngine() {
   font-size: 13px;
 }
 
-.engine-panel {
-  padding: 8px 4px;
-}
-
-.engine-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-}
-
-.engine-desc {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
-.engine-radio {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.engine-actions {
-  margin-top: 4px;
-}
 </style>

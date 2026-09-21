@@ -38,6 +38,8 @@ public class PptController {
     public static class PptReq {
         /** PPT 主题 */
         private String topic;
+        /** PPT 视觉风格：正式商务 / 简洁现代 / 数据驱动 */
+        private String style;
     }
 
     /** 生成 PPT：调 Dify workflow 获取大纲 JSON → POI 渲染 → 落记录，返回记录 id */
@@ -47,14 +49,16 @@ public class PptController {
         if (req.getTopic() == null || req.getTopic().isBlank()) {
             throw new BizException("PPT 主题不能为空");
         }
-        PptRenderService.PptRecord record = pptService.generate(req.getTopic().trim(), userId);
-        OpLogger.log(userId, "PPT", "PPT生成触发", "主题：" + req.getTopic().trim() + "，记录ID " + record.getId());
+        PptRenderService.PptRecord record = pptService.generate(req.getTopic().trim(), req.getStyle(), userId);
+        OpLogger.log(userId, "PPT", "PPT生成触发", "主题：" + req.getTopic().trim()
+                + "，风格：" + record.getStyle() + "，记录ID " + record.getId());
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", record.getId());
         data.put("title", record.getTitle());
         data.put("pages", record.getPages());
         data.put("source", record.getSource());
+        data.put("style", record.getStyle());
         return R.ok(data);
     }
 

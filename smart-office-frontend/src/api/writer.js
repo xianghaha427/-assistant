@@ -85,10 +85,10 @@ export async function writerGenerate(payload, handlers, signal) {
 }
 
 /**
- * PPT大纲生成（blocking，返回 { id, title, pages, source }）
+ * PPT大纲生成（blocking，返回 { id, title, pages, source, style }）
  */
-export async function pptGenerate(topic) {
-  const resp = await raw.post('/ppt/generate', { topic })
+export async function pptGenerate(topic, style) {
+  const resp = await raw.post('/ppt/generate', { topic, style })
   const body = resp.data
   if (!body || body.code !== 0) {
     throw new Error(body?.msg || 'PPT 生成失败')

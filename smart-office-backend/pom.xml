@@ -83,6 +83,11 @@
             <artifactId>poi-ooxml</artifactId>
             <version>5.2.5</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.31</version>
+        </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -90,7 +95,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- LangChain4j：阶段1自研知识问答引擎（OpenAI 兼容协议直连 DeepSeek，不用 spring-boot-starter） -->
+        <!-- LangChain4j：自研知识问答引擎（OpenAI 兼容协议连接本地 Ollama） -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>

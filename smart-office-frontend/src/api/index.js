@@ -138,6 +138,8 @@ export const updateUser = (id, form) => data(request.put(`/admin/users/${id}`, f
 export const deleteUser = (id) => data(request.delete(`/admin/users/${id}`))
 export const getRoles = () => data(request.get('/admin/roles'))
 export const getLogs = (params) => data(request.get('/admin/logs', { params }))
+export const getKnowledgeEngine = () => data(request.get('/admin/knowledge-engine'))
+export const updateKnowledgeEngine = (engine) => data(request.put('/admin/knowledge-engine', { engine }))
 
 /* ==================== 会议模块 ==================== */
 export const createMeeting = form => data(request.post('/meetings', form))
@@ -153,18 +155,33 @@ export const uploadMeetingFile = file => {
   formData.append('file', file)
   return data(request.post('/meetings/files', formData, { headers: { 'Content-Type': 'multipart/form-data' } }))
 }
+export const pushMeetingToDingtalk = (id) => data(request.post(`/meetings/${id}/push`))
 
+export const transcribeAudio = file => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return data(request.post('/meetings/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 }))
+}
+
+
+/* ==================== 通知中心 ==================== */
+export const getNotifications = () => data(request.get('/notifications'))
+export const getUnreadCount = () => data(request.get('/notifications/unread-count'))
+export const markNotificationRead = (id) => data(request.put(`/notifications/${id}/read`))
+export const markAllNotificationsRead = () => data(request.put('/notifications/read-all'))
+
+/* ==================== bash 安全管控 ==================== */
+export const execBashCommand = (command) => data(request.post('/security/bash-exec', { command }))
 
 /* ==================== 用户选项（待办转任务选人） ==================== */
 export const getUserOptions = () => data(request.get('/users/options'))
 
 /* ==================== 知识库 ==================== */
-export const uploadDocument = (form) => {
-  if (form instanceof FormData) {
-    return data(request.post('/knowledge/documents', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
-  }
-  return data(request.post('/knowledge/documents', form))
+export const uploadDocument = (file, category) => {
+  const fd = new FormData(); fd.append('file', file); fd.append('category', category || '未分类');
+  return data(request.post('/knowledge/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } }))
 }
 export const getDocuments = () => data(request.get('/knowledge/documents'))
 export const deleteDocument = (id) => data(request.delete(`/knowledge/documents/${id}`))
+export const rebuildIndex = () => data(request.post('/knowledge/rebuild-index'))
 export const searchKnowledge = (query) => data(request.post('/knowledge/search', { query }))

@@ -110,6 +110,15 @@ public class MeetingController {
         return R.ok();
     }
 
+    /** 语音转写：上传会议录音（mp3/wav/m4a），返回转写文本（阶段3 Faster-Whisper） */
+    @PostMapping("/transcribe")
+    public R<Map<String, Object>> transcribeAudio(@RequestParam("file") MultipartFile file) {
+        long userId = StpUtil.getLoginIdAsLong();
+        OpLogger.log(userId, "MEETING", "语音转写", file.getOriginalFilename());
+        String text = meetingService.transcribeAudio(file);
+        return R.ok(Map.of("text", text));
+    }
+
     @Data
     public static class SummaryReq {
         /** 纪要直传 Dify 的文件ID列表（可选，来自 /api/meetings/files） */

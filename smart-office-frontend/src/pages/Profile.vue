@@ -14,7 +14,7 @@
               {{ avatarText }}
             </el-avatar>
             <div class="avatar-overlay">
-              <el-icon><Camera /></el-icon>
+              <Camera :size="18" />
               <span>更换头像</span>
             </div>
             <input
@@ -141,7 +141,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Camera } from '@element-plus/icons-vue'
+import { Camera } from 'lucide-vue-next'
 import { getMe, updateProfile, changePassword } from '../api'
 
 const loading = ref(false)

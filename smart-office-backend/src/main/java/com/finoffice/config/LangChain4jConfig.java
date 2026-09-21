@@ -6,30 +6,30 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import java.time.Duration;
 
 /**
- * FinPilot 自研知识引擎装配（阶段1）：
- * LangChain4j OpenAiChatModel 走 OpenAI 兼容协议直连 DeepSeek。
- * 仅 finpilot.engine.enabled=true 时装配；未装配时知识问答自动回落 Dify 链路。
- * API Key 只读 application.yml 的 deepseek.api-key，严禁写入 git/代码/文档。
- * 注：LangChain4j 1.13 起聊天模型接口为 ChatModel（旧版 ChatLanguageModel 已移除）。
+ * FinPilot 自研引擎模型装配（阶段2 升级版）：
+ * - knowledgeChatModel（@Primary）：本地 Ollama Qwen2.5，数据不出域安全通道
+ * 仅 finpilot.engine.enabled=true 时装配；未装配时全部问答自动回落 Dify 链路。
  */
 @Configuration
 @ConditionalOnProperty(prefix = "finpilot.engine", name = "enabled", havingValue = "true")
 public class LangChain4jConfig {
 
+    /** 本地 Ollama Qwen2.5 模型（数据不出域安全通道） */
     @Bean
-    public ChatModel knowledgeChatModel(
-            @Value("${deepseek.api-key:}") String apiKey,
-            @Value("${deepseek.base-url:https://api.deepseek.com}") String baseUrl,
-            @Value("${deepseek.model:deepseek-chat}") String modelName,
+    @Primary
+    public ChatModel localChatModel(
+            @Value("${finpilot.rag.ollama-base-url:http://localhost:11434}") String ollamaBaseUrl,
+            @Value("${finpilot.rag.local-model:qwen2.5:latest}") String localModel,
             @Value("${finpilot.engine.timeout-seconds:120}") long timeoutSeconds) {
         return OpenAiChatModel.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .modelName(modelName)
+                .baseUrl(ollamaBaseUrl + "/v1")
+                .apiKey("ollama")  // Ollama 不校验 key，但不能为空
+                .modelName(localModel)
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .build();
     }

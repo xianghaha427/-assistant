@@ -6,15 +6,14 @@ const routes = [
     path: '/login',
     name: 'login',
     component: () => import('../pages/Login.vue'),
-    meta: { public: true, theme: 'dark' }
+    meta: { public: true }
   },
   {
     path: '/',
     component: () => import('../layouts/Layout.vue'),
     redirect: '/dashboard',
     children: [
-      // 工作台（深色主题页）
-      { path: 'dashboard', name: 'dashboard', component: () => import('../pages/Dashboard.vue'), meta: { title: '工作台', theme: 'dark', icon: 'Odometer' } },
+      { path: 'dashboard', name: 'dashboard', component: () => import('../pages/Dashboard.vue'), meta: { title: '工作台', icon: 'Odometer' } },
       // 协同办公
       { path: 'meeting', name: 'meeting', component: () => import('../pages/meeting/MeetingList.vue'), meta: { title: '会议中心', icon: 'Calendar' } },
       { path: 'meeting/create', name: 'meetingCreate', component: () => import('../pages/meeting/MeetingCreate.vue'), meta: { title: '新建会议' } },
@@ -31,10 +30,11 @@ const routes = [
       { path: 'insight', name: 'insight', component: () => import('../pages/insight/Insight.vue'), meta: { title: '行业洞察', icon: 'TrendCharts' } },
       { path: 'briefing', name: 'briefing', component: () => import('../pages/insight/BriefingHistory.vue'), meta: { title: '行业简报', icon: 'Document' } },
       // 数据看板
-      { path: 'board', name: 'board', component: () => import('../pages/board/DataBoard.vue'), meta: { title: '数据看板', icon: 'DataAnalysis', theme: 'dark' } },
+      { path: 'board', name: 'board', component: () => import('../pages/board/DataBoard.vue'), meta: { title: '数据看板', icon: 'DataAnalysis' } },
       // 个人与系统
       { path: 'profile', name: 'profile', component: () => import('../pages/Profile.vue'), meta: { title: '个人中心' } },
       { path: 'system', name: 'system', component: () => import('../pages/Admin.vue'), meta: { title: '系统管理', icon: 'Setting', roles: ['ADMIN'] } },
+      { path: 'security', name: 'bashSecurity', component: () => import('../pages/system/BashSecurity.vue'), meta: { title: '命令安全管控', icon: 'Setting', roles: ['ADMIN'] } },
       { path: 'admin', redirect: '/system' }
     ]
   },
@@ -73,15 +73,6 @@ router.beforeEach((to) => {
       ElMessage.warning('无权限访问该页面，请联系管理员')
       return { path: '/dashboard' }
     }
-  }
-})
-
-// 全局主题应用：按路由 meta.theme 切换 html.dark（覆盖 Layout 之外的页面，如登录页保持深色）
-router.afterEach((to) => {
-  if (to.meta.theme === 'dark') {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
   }
 })
 

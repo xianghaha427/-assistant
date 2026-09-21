@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  *                 "bullets":["要点1","要点2"], "speaker_notes":"演讲备注"} ] }
  * 解析容错：剥掉 ```json 围栏 → 正则取首个 {...} → 兼容 sections/key_point 变体 → 全失败走 Mock 大纲
  *
- * 渲染样式：16:9 画布，纯色简洁母版——白底 + 品牌蓝（#4D8DFF）标题条，
+ * 渲染样式：16:9 画布，支持正式商务、简洁现代、数据驱动三套母版；
  * 中文字体统一微软雅黑防乱码；每页演讲备注写入 notes。
  */
 @Slf4j
@@ -33,13 +33,15 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class PptRenderService {
 
-    private static final Color BRAND_BLUE = new Color(0x4D, 0x8D, 0xFF);
     private static final Color DARK_TEXT = new Color(0x1F, 0x27, 0x33);
     private static final Color GRAY_TEXT = new Color(0x5A, 0x64, 0x78);
     private static final Color BODY_TEXT = new Color(0x3D, 0x46, 0x57);
     private static final String FONT_NAME = "微软雅黑";
     private static final int W = 960;
     private static final int H = 540;
+    private static final String STYLE_BUSINESS = "正式商务";
+    private static final String STYLE_MODERN = "简洁现代";
+    private static final String STYLE_DATA = "数据驱动";
 
     private final ObjectMapper objectMapper;
     /** notesSlide part 序号（全局递增不重置，保证并发下 part 名唯一） */
@@ -59,6 +61,7 @@ public class PptRenderService {
     public static class PptOutline {
         private String title;
         private String subtitle = "";
+        private String style = STYLE_BUSINESS;
         private List<PptPage> pages = new ArrayList<>();
     }
 
@@ -70,8 +73,10 @@ public class PptRenderService {
         private String topic;
         private String title;
         private int pages;
-        /** 渲染来源：dify / deepseek / mock */
+        /** 渲染来源：dify / mock */
         private String source;
+        /** 用户选择的视觉风格 */
+        private String style;
         private byte[] pptx;
         private java.time.LocalDateTime createTime;
     }
@@ -79,7 +84,8 @@ public class PptRenderService {
     /**
      * 容错解析大纲 JSON；解析彻底失败时返回基于主题的 Mock 大纲（保证下载链路可用）
      */
-    public PptOutline parseOutline(String rawJson, String topic) {
+    public PptOutline parseOutline(String rawJson, String topic, String style) {
+        String selectedStyle = normalizeStyle(style);
         if (rawJson != null && !rawJson.isBlank()) {
             try {
                 String json = extractJson(rawJson);
@@ -87,6 +93,7 @@ public class PptRenderService {
                 PptOutline outline = new PptOutline();
                 outline.setTitle(text(root.path("title"), topic));
                 outline.setSubtitle(text(root.path("subtitle"), ""));
+                outline.setStyle(selectedStyle);
 
                 JsonNode pagesNode = root.path("pages");
                 if (!pagesNode.isArray() || pagesNode.isEmpty()) {
@@ -122,7 +129,7 @@ public class PptRenderService {
                 log.warn("PPT 大纲 JSON 解析失败，降级为 Mock 大纲: {}", e.getMessage());
             }
         }
-        return mockOutline(topic);
+        return mockOutline(topic, selectedStyle);
     }
 
     /** 剥掉 ```json 围栏；再用括号配对扫描取首个完整 {...} */
@@ -155,10 +162,11 @@ public class PptRenderService {
         return (v == null || v.isBlank()) ? def : v.trim();
     }
 
-    /** Mock 大纲（Dify/DeepSeek 均不可用时的兜底） */
-    public PptOutline mockOutline(String topic) {
+    /** Mock 大纲（Dify 不可用时的兜底） */
+    public PptOutline mockOutline(String topic, String style) {
         PptOutline o = new PptOutline();
         o.setTitle(topic);
+        o.setStyle(normalizeStyle(style));
         o.setSubtitle("华信证券智能办公平台 · PPT大纲生成（演示模板）");
 
         PptPage cover = new PptPage();
@@ -201,12 +209,13 @@ public class PptRenderService {
     public byte[] render(PptOutline outline) {
         try (XMLSlideShow ppt = new XMLSlideShow()) {
             ppt.setPageSize(new Dimension(W, H));
+            Theme theme = themeFor(outline.getStyle());
 
             for (PptPage page : outline.getPages()) {
                 if ("cover".equalsIgnoreCase(page.getType())) {
-                    addCoverSlide(ppt, outline.getTitle(), outline.getSubtitle(), page.getNotes());
+                    addCoverSlide(ppt, outline.getTitle(), outline.getSubtitle(), page.getNotes(), theme);
                 } else {
-                    addContentSlide(ppt, page);
+                    addContentSlide(ppt, page, theme);
                 }
             }
             // 大纲首页不是 cover 时，补一张封面
@@ -214,7 +223,7 @@ public class PptRenderService {
                     || !"cover".equalsIgnoreCase(outline.getPages().get(0).getType())) {
                 // 若首页即内容页，封面已在循环中按内容页处理；此处仅对空大纲兜底
                 if (outline.getPages().isEmpty()) {
-                    addCoverSlide(ppt, outline.getTitle(), outline.getSubtitle(), "");
+                    addCoverSlide(ppt, outline.getTitle(), outline.getSubtitle(), "", theme);
                 }
             }
 
@@ -226,42 +235,65 @@ public class PptRenderService {
         }
     }
 
-    /** 封面页：白底 + 品牌蓝上下边条 + 主标题 + 副标题 */
-    private void addCoverSlide(XMLSlideShow ppt, String title, String subtitle, String notes) {
+    /** 封面页：根据所选风格使用不同版式、层级和视觉重心。 */
+    private void addCoverSlide(XMLSlideShow ppt, String title, String subtitle, String notes, Theme theme) {
         XSLFSlide slide = ppt.createSlide();
-        slide.getBackground().setFillColor(Color.WHITE);
+        slide.getBackground().setFillColor(theme.background());
 
-        addRect(slide, 0, 0, W, 10, BRAND_BLUE);
-        addRect(slide, 0, H - 10, W, 10, BRAND_BLUE);
-        // 左侧品牌竖条
-        addRect(slide, 0, 200, 12, 140, BRAND_BLUE);
+        String safeTitle = safe(title);
+        String safeSubtitle = subtitle == null || subtitle.isBlank() ? "华信证券智能办公平台" : subtitle;
 
-        XSLFTextBox titleBox = slide.createTextBox();
-        titleBox.setAnchor(new Rectangle(48, 200, W - 96, 90));
-        XSLFTextRun titleRun = titleBox.addNewTextParagraph().addNewTextRun();
-        titleRun.setText(safe(title));
-        styleRun(titleRun, 34, true, DARK_TEXT);
-
-        XSLFTextBox subBox = slide.createTextBox();
-        subBox.setAnchor(new Rectangle(48, 300, W - 96, 50));
-        XSLFTextRun subRun = subBox.addNewTextParagraph().addNewTextRun();
-        subRun.setText(subtitle == null || subtitle.isBlank() ? "华信证券智能办公平台" : subtitle);
-        styleRun(subRun, 16, false, GRAY_TEXT);
+        if (theme.modern()) {
+            addRect(slide, 56, 72, 96, 5, theme.accent());
+            addText(slide, safeTitle, 56, 152, 650, 132, 40, true, theme.titleText(), TextAlign.LEFT);
+            addText(slide, safeSubtitle, 58, 308, 620, 48, 15, false, theme.bodyText(), TextAlign.LEFT);
+            addText(slide, "PRESENTATION", 714, 88, 170, 26, 10, false, theme.accent(), TextAlign.RIGHT);
+            addRect(slide, 720, 135, 3, 290, theme.accent());
+            addRect(slide, 744, 164, 80, 80, theme.primary());
+            addRect(slide, 784, 244, 80, 80, theme.accent());
+            addRect(slide, 824, 324, 80, 80, new Color(0xE6, 0xF4, 0xF1));
+        } else if (theme.data()) {
+            addRect(slide, 0, 0, W, H, theme.background());
+            addRect(slide, 0, 0, 250, H, theme.primary());
+            addRect(slide, 250, 0, 8, H, theme.accent());
+            addText(slide, safeTitle, 304, 128, 560, 112, 36, true, theme.titleText(), TextAlign.LEFT);
+            addText(slide, safeSubtitle, 306, 256, 520, 44, 15, false, theme.bodyText(), TextAlign.LEFT);
+            addText(slide, "DATA", 54, 116, 140, 54, 34, true, Color.WHITE, TextAlign.LEFT);
+            addText(slide, "INSIGHT", 56, 174, 140, 32, 16, false, new Color(0xC7, 0xD8, 0xEA), TextAlign.LEFT);
+            addMetricCard(slide, 304, 360, 160, 92, "01", "结构化大纲", theme);
+            addMetricCard(slide, 492, 360, 160, 92, "02", "指标化表达", theme);
+            addMetricCard(slide, 680, 360, 160, 92, "03", "结论页输出", theme);
+        } else {
+            addRect(slide, 0, 0, W, 10, theme.primary());
+            addRect(slide, 0, H - 10, W, 10, theme.primary());
+            addRect(slide, 0, 200, 12, 140, theme.accent());
+            addText(slide, safeTitle, 48, 200, W - 96, 90, 34, true, theme.titleText(), TextAlign.LEFT);
+            addText(slide, safeSubtitle, 48, 300, W - 96, 50, 16, false, theme.bodyText(), TextAlign.LEFT);
+        }
 
         writeNotes(ppt, slide, notes);
     }
 
-    /** 内容页：顶部品牌蓝标题条 + bullets 正文 */
-    private void addContentSlide(XMLSlideShow ppt, PptPage page) {
-        XSLFSlide slide = ppt.createSlide();
-        slide.getBackground().setFillColor(Color.WHITE);
+    /** 内容页：正式商务、简洁现代、数据驱动使用不同版式与信息表达。 */
+    private void addContentSlide(XMLSlideShow ppt, PptPage page, Theme theme) {
+        if (theme.modern()) {
+            addModernContentSlide(ppt, page, theme);
+        } else if (theme.data()) {
+            addDataContentSlide(ppt, page, theme);
+        } else {
+            addBusinessContentSlide(ppt, page, theme);
+        }
+    }
 
-        // 品牌蓝标题条
+    private void addBusinessContentSlide(XMLSlideShow ppt, PptPage page, Theme theme) {
+        XSLFSlide slide = ppt.createSlide();
+        slide.getBackground().setFillColor(theme.background());
+
         XSLFAutoShape bar = slide.createAutoShape();
         bar.setAnchor(new Rectangle(0, 0, W, 64));
-        bar.setFillColor(BRAND_BLUE);
-        bar.setLineColor(BRAND_BLUE);
-        bar.setText(page.getTitle() == null || page.getTitle().isBlank() ? "内容页" : page.getTitle());
+        bar.setFillColor(theme.primary());
+        bar.setLineColor(theme.primary());
+        bar.setText(pageTitle(page));
         bar.setWordWrap(true);
         bar.setLeftInset(40.0);
         bar.setTopInset(10.0);
@@ -272,21 +304,82 @@ public class PptRenderService {
             }
         }
 
-        // bullets 正文
         XSLFTextBox body = slide.createTextBox();
         body.setAnchor(new Rectangle(56, 96, W - 112, H - 140));
         body.setWordWrap(true);
-        List<String> bullets = page.getBullets() == null || page.getBullets().isEmpty()
-                ? List.of("（本页暂无要点）") : page.getBullets();
-        for (String bullet : bullets) {
+        for (String bullet : bullets(page)) {
             XSLFTextParagraph para = body.addNewTextParagraph();
             para.setSpaceAfter(12.0);
             para.setLineSpacing(140.0);
             XSLFTextRun run = para.addNewTextRun();
             run.setText("•  " + bullet);
-            styleRun(run, 16, false, BODY_TEXT);
+            styleRun(run, 16, false, theme.bodyText());
         }
 
+        writeNotes(ppt, slide, page.getNotes());
+    }
+
+    private void addModernContentSlide(XMLSlideShow ppt, PptPage page, Theme theme) {
+        XSLFSlide slide = ppt.createSlide();
+        slide.getBackground().setFillColor(theme.background());
+
+        addRect(slide, 0, 0, W, 8, theme.accent());
+        addText(slide, pageTitle(page), 56, 44, W - 132, 54, 27, true, theme.titleText(), TextAlign.LEFT);
+        addRect(slide, 56, 110, 108, 4, theme.accent());
+
+        List<String> bullets = bullets(page);
+        int top = 154;
+        int itemHeight = Math.max(64, Math.min(92, 290 / Math.max(1, Math.min(4, bullets.size()))));
+        for (int i = 0; i < Math.min(4, bullets.size()); i++) {
+            int y = top + i * (itemHeight + 18);
+            addText(slide, String.format("%02d", i + 1), 58, y + 4, 52, 34, 22, true, theme.accent(), TextAlign.LEFT);
+            addText(slide, bullets.get(i), 126, y, 690, itemHeight, 18, false, theme.bodyText(), TextAlign.LEFT);
+            addRect(slide, 126, y + itemHeight + 4, 360 - i * 42, 2, new Color(0xD6, 0xE7, 0xE3));
+        }
+        if (bullets.size() > 4) {
+            addText(slide, "另有 " + (bullets.size() - 4) + " 项内容保留在备注与大纲中", 126, 468, 520, 26,
+                    11, false, GRAY_TEXT, TextAlign.LEFT);
+        }
+
+        addRect(slide, 884, 96, 4, 348, theme.primary());
+        addText(slide, "MINIMAL", 765, 448, 120, 22, 9, false, theme.accent(), TextAlign.RIGHT);
+        writeNotes(ppt, slide, page.getNotes());
+    }
+
+    private void addDataContentSlide(XMLSlideShow ppt, PptPage page, Theme theme) {
+        XSLFSlide slide = ppt.createSlide();
+        slide.getBackground().setFillColor(theme.background());
+
+        addRect(slide, 0, 0, W, 58, theme.primary());
+        addRect(slide, 0, 58, W, 4, theme.accent());
+        addText(slide, pageTitle(page), 42, 14, 680, 36, 21, true, Color.WHITE, TextAlign.LEFT);
+        addText(slide, "DATA VIEW", 776, 18, 130, 24, 10, false, new Color(0xC7, 0xD8, 0xEA), TextAlign.RIGHT);
+
+        List<String> bullets = bullets(page);
+        for (int i = 0; i < Math.min(3, bullets.size()); i++) {
+            String bullet = bullets.get(i);
+            String metric = extractMetric(bullet, i);
+            String label = stripMetric(bullet, metric);
+            addMetricCard(slide, 46 + i * 294, 92, 258, 104, metric, label, theme);
+        }
+
+        addText(slide, "关键对比", 52, 230, 160, 28, 16, true, theme.titleText(), TextAlign.LEFT);
+        int chartTop = 276;
+        for (int i = 0; i < Math.min(4, bullets.size()); i++) {
+            String bullet = bullets.get(i);
+            int y = chartTop + i * 48;
+            int value = metricValue(bullet, i);
+            addText(slide, shorten(stripMetric(bullet, extractMetric(bullet, i)), 20), 58, y - 4, 220, 28,
+                    12, false, theme.bodyText(), TextAlign.LEFT);
+            addRect(slide, 286, y, 480, 18, new Color(0xDF, 0xE8, 0xF2));
+            addRect(slide, 286, y, Math.max(58, value * 480 / 100), 18, i % 2 == 0 ? theme.primary() : theme.accent());
+            addText(slide, value + "%", 782, y - 4, 70, 26, 12, true, theme.titleText(), TextAlign.LEFT);
+        }
+
+        if ("summary".equalsIgnoreCase(page.getType())) {
+            addRect(slide, 52, 470, 760, 2, theme.accent());
+            addText(slide, "结论优先，数据支撑后续行动", 52, 482, 520, 26, 14, true, theme.titleText(), TextAlign.LEFT);
+        }
         writeNotes(ppt, slide, page.getNotes());
     }
 
@@ -299,12 +392,113 @@ public class PptRenderService {
         rect.setText("");
     }
 
+    private void addMetricCard(XSLFSlide slide, int x, int y, int w, int h, String metric, String label, Theme theme) {
+        addRect(slide, x, y, w, h, Color.WHITE);
+        addRect(slide, x, y, w, 5, theme.accent());
+        addText(slide, metric, x + 18, y + 18, w - 36, 34, 24, true, theme.titleText(), TextAlign.LEFT);
+        addText(slide, shorten(label, 22), x + 18, y + 58, w - 36, 32, 11, false, theme.bodyText(), TextAlign.LEFT);
+    }
+
+    private XSLFTextBox addText(XSLFSlide slide, String text, int x, int y, int w, int h, double size,
+                                boolean bold, Color color, TextAlign align) {
+        XSLFTextBox box = slide.createTextBox();
+        box.setAnchor(new Rectangle(x, y, w, h));
+        box.setWordWrap(true);
+        XSLFTextParagraph para = box.addNewTextParagraph();
+        para.setTextAlign(align);
+        XSLFTextRun run = para.addNewTextRun();
+        run.setText(text == null ? "" : text);
+        styleRun(run, size, bold, color);
+        return box;
+    }
+
+    private List<String> bullets(PptPage page) {
+        return page.getBullets() == null || page.getBullets().isEmpty()
+                ? List.of("（本页暂无要点）") : page.getBullets();
+    }
+
+    private String pageTitle(PptPage page) {
+        return page.getTitle() == null || page.getTitle().isBlank() ? "内容页" : page.getTitle();
+    }
+
+    private String shorten(String text, int limit) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String clean = text.trim();
+        return clean.length() <= limit ? clean : clean.substring(0, limit - 1) + "…";
+    }
+
+    private String extractMetric(String text, int index) {
+        if (text != null) {
+            Matcher matcher = Pattern.compile("(\\d+(?:\\.\\d+)?%?)").matcher(text);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        return String.format("%02d", index + 1);
+    }
+
+    private String stripMetric(String text, String metric) {
+        if (text == null || text.isBlank()) {
+            return "核心指标";
+        }
+        String clean = metric == null || metric.isBlank() ? text : text.replace(metric, "");
+        clean = clean.replaceAll("^[：:，,。\\s-]+", "").trim();
+        return clean.isBlank() ? text.trim() : clean;
+    }
+
+    private int metricValue(String text, int index) {
+        if (text != null) {
+            Matcher matcher = Pattern.compile("(\\d+(?:\\.\\d+)?)").matcher(text);
+            if (matcher.find()) {
+                try {
+                    double value = Double.parseDouble(matcher.group(1));
+                    if (value > 0) {
+                        return Math.max(18, Math.min(100, (int) Math.round(value > 100 ? value % 100 : value)));
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return Math.min(92, 52 + index * 11);
+    }
+
     /** 统一字体样式：微软雅黑防乱码 */
     private void styleRun(XSLFTextRun run, double size, boolean bold, Color color) {
         run.setFontFamily(FONT_NAME);
         run.setFontSize(size);
         run.setBold(bold);
         run.setFontColor(color);
+    }
+
+    /** 只接受前端/Dify 工作流约定的三种风格，非法值回落到正式商务。 */
+    public static String normalizeStyle(String style) {
+        if (STYLE_MODERN.equals(style) || STYLE_DATA.equals(style) || STYLE_BUSINESS.equals(style)) {
+            return style;
+        }
+        return STYLE_BUSINESS;
+    }
+
+    private Theme themeFor(String style) {
+        return switch (normalizeStyle(style)) {
+            case STYLE_MODERN -> new Theme(new Color(0xFF, 0xFF, 0xFF), new Color(0x16, 0x72, 0x6B),
+                    new Color(0xF0, 0xA5, 0x00), new Color(0x16, 0x72, 0x6B), new Color(0x4B, 0x55, 0x63), STYLE_MODERN);
+            case STYLE_DATA -> new Theme(new Color(0xF5, 0xF8, 0xFC), new Color(0x23, 0x4A, 0x6F),
+                    new Color(0xE6, 0x7E, 0x22), new Color(0x23, 0x4A, 0x6F), new Color(0x36, 0x45, 0x54), STYLE_DATA);
+            default -> new Theme(Color.WHITE, new Color(0x1D, 0x5B, 0x8F),
+                    new Color(0x2F, 0x93, 0x8A), DARK_TEXT, BODY_TEXT, STYLE_BUSINESS);
+        };
+    }
+
+    private record Theme(Color background, Color primary, Color accent, Color titleText, Color bodyText, String style) {
+        private boolean modern() {
+            return STYLE_MODERN.equals(style);
+        }
+
+        private boolean data() {
+            return STYLE_DATA.equals(style);
+        }
     }
 
     /**

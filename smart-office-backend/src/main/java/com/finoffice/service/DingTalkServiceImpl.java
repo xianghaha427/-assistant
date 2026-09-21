@@ -38,9 +38,34 @@ public class DingTalkServiceImpl implements DingTalkService {
     }
 
     @Override
-    public void sendMeetingSummary(String meetingTitle, String summaryText) {
-        String markdown = "## " + meetingTitle + "\n\n" + summaryText;
-        sendMarkdown("会议纪要 - " + meetingTitle, markdown);
+    public void sendMeetingSummary(String meetingTitle, String summaryJson) {
+        String markdown = "## " + meetingTitle + "\n\n";
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var root = mapper.readTree(summaryJson);
+            String abstract_ = root.path("abstract").asText("");
+            if (!abstract_.isEmpty()) markdown += abstract_ + "\n\n";
+            var decisions = root.path("decisionPoints");
+            if (decisions.isArray() && decisions.size() > 0) {
+                markdown += "**会议决议：**\n";
+                for (var d : decisions) markdown += "- " + d.asText() + "\n";
+                markdown += "\n";
+            }
+            var items = root.path("actionItems");
+            if (items.isArray() && items.size() > 0) {
+                markdown += "**待办事项：**\n";
+                for (var item : items) {
+                    String c = item.path("content").asText("");
+                    String a = item.path("assignee").asText("");
+                    String d = item.path("deadline").asText("");
+                    markdown += "- " + c + "（" + a + "，截止" + d + "）\n";
+                }
+            }
+        } catch (Exception e) {
+            markdown += summaryJson;
+        }
+        markdown += "\n> 由恒生智能办公助手自动生成，会议简报";
+        sendMarkdown("会议简报 - " + meetingTitle, markdown);
     }
 
     private void doPost(String json) {

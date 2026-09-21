@@ -34,6 +34,49 @@
               class="text-area"
             />
           </el-tab-pane>
+          <el-tab-pane label="录音转写" name="audio">
+            <div class="audio-section">
+              <el-upload
+                class="audio-upload"
+                drag
+                :auto-upload="false"
+                :show-file-list="false"
+                accept=".mp3,.wav,.m4a,.ogg"
+                :on-change="handleAudioChange"
+                :disabled="transcribing"
+              >
+                <div class="upload-inner">
+                  <div class="upload-icon">{{ audioFile ? '🎵' : '🎙️' }}</div>
+                  <div class="upload-title" v-if="!audioFile">
+                    拖拽会议录音到此处，或 <em>点击上传</em>
+                  </div>
+                  <div class="upload-title" v-else>
+                    已选择：<em>{{ audioFile.name }}</em>
+                  </div>
+                  <div class="upload-hint" v-if="!audioFile">
+                    支持 MP3 / WAV / M4A / OGG，建议时长 &lt; 30 分钟
+                  </div>
+                  <div class="upload-hint" v-else>
+                    {{ formatSize(audioFile.size) }} · 点击"开始转写"生成文本
+                  </div>
+                </div>
+              </el-upload>
+              <div v-if="audioFile" class="audio-actions">
+                <el-button
+                  type="primary"
+                  :loading="transcribing"
+                  @click="handleTranscribe"
+                >
+                  {{ transcribing ? '转写中（可能需要几分钟）...' : '开始转写' }}
+                </el-button>
+                <el-button @click="audioFile = null">重新选择</el-button>
+              </div>
+              <div v-if="transcribing" class="transcribe-progress">
+                <div class="gen-spinner" style="width:24px;height:24px;margin:0 8px 0 0;display:inline-block;vertical-align:middle;"></div>
+                <span>AI 正在识别语音内容，请耐心等待...</span>
+              </div>
+            </div>
+          </el-tab-pane>
           <el-tab-pane label="文档上传" name="file">
             <el-upload
               ref="uploadRef"
@@ -97,6 +140,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createMeeting, generateSummary, uploadFile } from '../../api/meeting.js'
+import { transcribeAudio } from '../../api/index.js'
 
 const router = useRouter()
 
@@ -107,6 +151,8 @@ const form = ref({
 })
 const activeTab = ref('text')
 const docFiles = ref([])
+const audioFile = ref(null)
+const transcribing = ref(false)
 const submitting = ref(false)
 const generating = ref(false)
 
@@ -127,6 +173,40 @@ function handleFileChange(file) {
 
 function removeDocFile(i) {
   docFiles.value.splice(i, 1)
+}
+
+// 与前端 nginx client_max_body_size / 后端 spring.servlet.multipart.max-request-size 保持一致
+const MAX_AUDIO_SIZE = 50 * 1024 * 1024
+
+function handleAudioChange(file) {
+  if (!file?.raw) return
+  if (file.raw.size > MAX_AUDIO_SIZE) {
+    ElMessage.error(`文件过大（当前 ${formatSize(file.raw.size)}，上限 ${formatSize(MAX_AUDIO_SIZE)}），请压缩后重试`)
+    audioFile.value = null
+    return
+  }
+  audioFile.value = file.raw
+}
+
+async function handleTranscribe() {
+  if (!audioFile.value) return
+  transcribing.value = true
+  try {
+    const result = await transcribeAudio(audioFile.value)
+    if (result?.text) {
+      form.value.raw_text = result.text
+      activeTab.value = 'text'
+      ElMessage.success(`转写完成，共 ${result.text.length} 字，已自动填入文本区`)
+    } else {
+      ElMessage.error('转写结果为空，请重试')
+    }
+  } catch (e) {
+    console.error('转写失败详情:', e)
+    const msg = e?.response?.data?.msg || e?.message || '语音转写失败，请检查网络和音频文件后重试'
+    ElMessage.error(msg)
+  } finally {
+    transcribing.value = false
+  }
 }
 
 function formatSize(bytes) {
@@ -294,6 +374,27 @@ async function handleSubmit() {
   padding: 0 2px;
 }
 .file-remove:hover { text-decoration: underline; }
+
+/* 录音转写 */
+.audio-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.audio-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.transcribe-progress {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--accent);
+}
 
 /* 操作按钮 */
 .form-actions {

@@ -1,22 +1,32 @@
 # =====================================================================
-# FinPilot - 企业知识问答助手 DSL（完整多节点 ChatFlow 编排版）
+# 恒生智能办公助手 - 企业知识问答助手 DSL（v2.0 语义分类优化版）
 # 用途：金融企业员工内部知识问答，覆盖公司制度、流程规范、业务操作等场景
 # 类型：Chatflow（advanced-chat 对话型工作流），目标平台 Dify 1.16.1
 # 底层模型：deepseek-chat（provider: deepseek）
 #
-# 工作流结构：
-#   开始(sys.query) -> 代码执行[意图识别] -> 条件分支1
-#     |- 打招呼/转人工 -> 直接回复[固定应答] (终端)
-#     +- 需要知识问答 -> 知识检索 -> 条件分支2
-#           |- 检索结果非空 -> LLM[RAG回答] -> 直接回复 (终端)
-#           +- 检索结果为空 -> LLM[闲聊兜底回答] -> 直接回复 (终端)
+# v2.0 优化说明（相对 v1.x 的 code 短语匹配意图识别）：
+#   1. 意图识别由「code 节点短语匹配」改为「question-classifier 语义分类」，
+#      能理解自然语言表达（如"帮我查下请假流程""找 IT 看下账号"），
+#      不再依赖脆弱的硬编码短语列表，漏判/误判率大幅下降；
+#   2. 去除 code 节点的 type 输出变量名（易与节点类型字段混淆）与
+#      if-else 的 in 操作符（Dify 不支持）隐患；
+#   3. 分类精简为三路：问候闲聊 / 转人工 / 知识问答，其中问候与转人工
+#      走固定文案应答（不调 LLM），知识问答走 RAG 检索 + 结构化回答。
 #
-# 导入方式：Dify 工作室 -> 创建应用 -> 导入 DSL 文件
+# 工作流结构：
+#   开始(sys.query) → 问题分类器（语义三分类）
+#     ├─ 类1 问候与闲聊 → 直接回复[问候应答]（固定文案，不调LLM）
+#     ├─ 类2 转人工服务 → 直接回复[转人工应答]（固定文案）
+#     └─ 类3 知识问答 → 知识检索 → 条件分支
+#           ├─ 检索结果非空 → LLM[RAG回答] → 直接回复（终端）
+#           └─ 检索结果为空 → LLM[闲聊兜底] → 直接回复（终端）
+#
+# 导入方式：Dify 工作室 → 创建应用 → 导入 DSL 文件
 # 重要：导入后必须在「知识检索」节点中绑定实际的企业知识库
 # =====================================================================
 app:
   description: >-
-    FinPilot 企业知识问答助手，专为金融企业员工提供公司制度、流程规范、业务操作等方面的智能问答服务。内置意图识别（打招呼/转人工/知识问答），基于企业知识库进行 RAG 精准回答，知识库未命中时提供闲聊兜底。
+    恒生智能办公助手 企业知识问答助手，专为金融企业员工提供公司制度、流程规范、业务操作等方面的智能问答服务。内置语义意图识别（问候闲聊/转人工/知识问答），基于企业知识库进行 RAG 精准回答，知识库未命中时提供闲聊兜底。
   icon: "📚"
   icon_background: '#E4FBCC'
   mode: advanced-chat
@@ -42,7 +52,7 @@ workflow:
         transfer_methods:
           - local_file
           - remote_url
-    opening_statement: 您好！我是 FinPilot 企业知识问答助手，可以为您解答公司制度、流程规范、业务操作等问题。请问有什么可以帮您？
+    opening_statement: 您好！我是 恒生智能办公助手 企业知识问答助手，可以为您解答公司制度、流程规范、业务操作等问题。请问有什么可以帮您？
     retriever_resource:
       enabled: true
     sensitive_word_avoidance:
@@ -61,108 +71,119 @@ workflow:
       voice: ''
   graph:
     edges:
+      # 开始 → 问题分类器
       - data:
           isInIteration: false
           sourceType: start
-          targetType: code
-        id: edge-start-to-intent
-        source: '1754400000001'
+          targetType: question-classifier
+        id: edge-start-to-classifier
+        source: '1754600000001'
         sourceHandle: source
-        target: '1754400000002'
+        target: '1754600000002'
         targetHandle: target
         type: custom
+      # 问题分类器 类1（问候与闲聊） → 直接回复[问候应答]
       - data:
           isInIteration: false
-          sourceType: code
-          targetType: if-else
-        id: edge-intent-to-branch1
-        source: '1754400000002'
-        sourceHandle: source
-        target: '1754400000003'
-        targetHandle: target
-        type: custom
-      - data:
-          isInIteration: false
-          sourceHandle: 'true'
-          sourceType: if-else
+          sourceHandle: '1'
+          sourceType: question-classifier
           targetType: answer
-        id: edge-branch1-case1-to-fixed-answer
-        source: '1754400000003'
-        sourceHandle: 'true'
-        target: '1754400000004'
+        id: edge-classifier-class1-to-greeting
+        source: '1754600000002'
+        sourceHandle: '1'
+        target: '1754600000003'
         targetHandle: target
         type: custom
+      # 问题分类器 类2（转人工服务） → 直接回复[转人工应答]
       - data:
           isInIteration: false
-          sourceHandle: 'false'
-          sourceType: if-else
-          targetType: knowledge-retrieval
-        id: edge-branch1-default-to-retrieval
-        source: '1754400000003'
-        sourceHandle: 'false'
-        target: '1754400000005'
+          sourceHandle: '2'
+          sourceType: question-classifier
+          targetType: answer
+        id: edge-classifier-class2-to-human
+        source: '1754600000002'
+        sourceHandle: '2'
+        target: '1754600000004'
         targetHandle: target
         type: custom
+      # 问题分类器 类3（知识问答） → 知识检索
+      - data:
+          isInIteration: false
+          sourceHandle: '3'
+          sourceType: question-classifier
+          targetType: knowledge-retrieval
+        id: edge-classifier-class3-to-retrieval
+        source: '1754600000002'
+        sourceHandle: '3'
+        target: '1754600000005'
+        targetHandle: target
+        type: custom
+      # 知识检索 → 条件分支
       - data:
           isInIteration: false
           sourceType: knowledge-retrieval
           targetType: if-else
-        id: edge-retrieval-to-branch2
-        source: '1754400000005'
+        id: edge-retrieval-to-branch
+        source: '1754600000005'
         sourceHandle: source
-        target: '1754400000006'
+        target: '1754600000006'
         targetHandle: target
         type: custom
+      # 条件分支 true（检索非空） → LLM[RAG回答]
       - data:
           isInIteration: false
           sourceHandle: 'true'
           sourceType: if-else
           targetType: llm
-        id: edge-branch2-case1-to-rag
-        source: '1754400000006'
+        id: edge-branch-true-to-rag
+        source: '1754600000006'
         sourceHandle: 'true'
-        target: '1754400000007'
+        target: '1754600000007'
         targetHandle: target
         type: custom
+      # 条件分支 false（检索为空） → LLM[闲聊兜底]
       - data:
           isInIteration: false
           sourceHandle: 'false'
           sourceType: if-else
           targetType: llm
-        id: edge-branch2-default-to-chitchat
-        source: '1754400000006'
+        id: edge-branch-false-to-chitchat
+        source: '1754600000006'
         sourceHandle: 'false'
-        target: '1754400000009'
+        target: '1754600000008'
         targetHandle: target
         type: custom
+      # LLM[RAG回答] → 直接回复
       - data:
           isInIteration: false
           sourceType: llm
           targetType: answer
         id: edge-rag-to-answer
-        source: '1754400000007'
+        source: '1754600000007'
         sourceHandle: source
-        target: '1754400000010'
+        target: '1754600000009'
         targetHandle: target
         type: custom
+      # LLM[闲聊兜底] → 直接回复
       - data:
           isInIteration: false
           sourceType: llm
           targetType: answer
         id: edge-chitchat-to-answer
-        source: '1754400000009'
+        source: '1754600000008'
         sourceHandle: source
-        target: '1754400000011'
+        target: '1754600000010'
         targetHandle: target
         type: custom
     nodes:
+      # ==================== 1. 开始 ====================
       - data:
-          desc: 用户输入入口，接收员工提问内容
+          desc: 用户输入入口，用户提问内容走系统变量 sys.query
           title: 开始
           type: start
           variables: []
         height: 54
-        id: '1754400000001'
+        id: '1754600000001'
         position:
           x: 80
           y: 282
@@ -170,122 +191,55 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 2. 问题分类器（语义三分类） ====================
       - data:
-          code: |
-            import random
+          classes:
+            - id: '1'
+              name: 问候与闲聊
+            - id: '2'
+              name: 转人工服务
+            - id: '3'
+              name: 知识问答
+          desc: 语义三分类路由：问候闲聊/转人工走固定应答，知识问答走 RAG 检索
+          instruction: |-
+            你是「恒生智能办公助手 企业知识问答助手」的意图分类器。请根据用户输入及最近对话上下文，将用户最新意图归入以下三类之一：
 
+            【类1 问候与闲聊】打招呼、感谢、告别、自我介绍、无实质问题的寒暄。
+            示例：
+            - 「你好」→ 类1
+            - 「谢谢，下次再聊」→ 类1
+            - 「你是谁 / 你能做什么」→ 类1
 
-            def main(query: str) -> dict:
-                q = (query or "").strip().lower()
+            【类2 转人工服务】明确要求转接人工、联系管理员/IT/技术部，或反馈系统故障、账号问题、投诉建议等需要人工介入的诉求。
+            示例：
+            - 「转人工」→ 类2
+            - 「我的账号登录不上，找 IT 看下」→ 类2
+            - 「我要投诉」→ 类2
 
-                greeting_phrases = [
-                    "你好", "您好", "你好呀", "您好呀", "hi", "hello", "hey",
-                    "哈喽", "嗨", "早上好", "上午好", "中午好", "下午好", "晚上好",
-                    "早安", "午安", "晚安", "在吗", "在不在", "有人吗",
-                    "你是谁", "你叫什么", "你能干什么", "你会什么", "你能做什么",
-                    "你有什么功能", "你可以做什么", "介绍你自己", "介绍一下你自己",
-                    "自我介绍", "你是什么", "很高兴认识你", "初次见面",
-                    "你好啊", "您好啊", "你好你好", "hello你好", "hi你好",
-                    "在么", "请问在吗", "开始提问", "开始对话", "开始咨询",
-                    "我想提问", "我想咨询", "帮我个忙", "请帮我",
-                    "问一下", "请教一个问题", "能问个问题吗", "可以提问吗",
-                ]
+            【类3 知识问答】咨询公司制度、流程规范、业务操作等企业知识问题。
+            示例：
+            - 「差旅报销标准是什么？」→ 类3
+            - 「请假流程怎么走？」→ 类3
 
-                thanks_phrases = [
-                    "谢谢", "感谢", "多谢", "太感谢了", "非常感谢", "十分感谢",
-                    "辛苦了", "谢啦", "3q", "thanks", "thank you", "thank",
-                    "麻烦你了", "帮大忙了", "帮了大忙", "回答得不错", "很有帮助",
-                ]
-                thanks_replies = [
-                    "不客气！很高兴能帮到您。如果还有关于公司制度或业务流程的问题，随时问我～",
-                    "您太客气了！为员工解答问题是 FinPilot 的职责，欢迎继续提问。",
-                    "不用谢！如果后续还有其他问题，随时找我。",
-                ]
-
-                farewell_phrases = [
-                    "再见", "拜拜", "拜拜啦", "下次见", "先这样", "就这样",
-                    "没别的了", "没有其他问题了", "我先忙了", "我去忙了",
-                    "下次再聊", "bye", "goodbye", "see you", "回见",
-                    "结束对话", "先不问了", "暂时没有了",
-                ]
-                farewell_replies = [
-                    "再见！祝您工作顺利，有问题随时回来找 FinPilot～",
-                    "拜拜！很高兴为您服务，期待下次再会。",
-                    "好的，祝您工作愉快！有需要随时召唤我。",
-                ]
-
-                human_service_phrases = [
-                    "转人工", "人工服务", "人工客服", "找人工", "我要人工",
-                    "找管理员", "联系管理员", "系统管理员",
-                    "联系IT支持", "IT支持", "it支持", "找IT", "找it", "技术部",
-                    "系统故障", "系统报错", "系统崩溃", "系统打不开", "登不上系统",
-                    "无法登录", "账号被锁", "重置密码", "找回密码",
-                    "投诉", "我要投诉", "意见反馈", "意见建议",
-                    "找领导", "找负责人", "找相关部门", "联系相关部门",
-                ]
-
-                greeting_response = (
-                    "您好！我是 FinPilot 企业知识助手，可以为您解答公司制度、"
-                    "流程规范、业务操作等问题。"
-                )
-                human_service_response = (
-                    "已为您转接人工服务通道，请联系行政部或 IT 支持（分机 8000）。"
-                )
-
-                if q in human_service_phrases or any(p in q for p in human_service_phrases):
-                    return {
-                        "type": "human_service",
-                        "response": human_service_response,
-                        "need_rag": False,
-                    }
-
-                if q in thanks_phrases or any(p in q for p in thanks_phrases):
-                    return {
-                        "type": "thanks",
-                        "response": random.choice(thanks_replies),
-                        "need_rag": False,
-                    }
-
-                if q in farewell_phrases or any(p in q for p in farewell_phrases):
-                    return {
-                        "type": "farewell",
-                        "response": random.choice(farewell_replies),
-                        "need_rag": False,
-                    }
-
-                if q in greeting_phrases or any(p in q for p in greeting_phrases):
-                    return {
-                        "type": "greeting",
-                        "response": greeting_response,
-                        "need_rag": False,
-                    }
-
-                return {
-                    "type": "rag_needed",
-                    "response": "",
-                    "need_rag": True,
-                }
-          code_language: python3
-          desc: 基于短语匹配的意图识别，区分打招呼/感谢/告别/转人工/知识问答
-          outputs:
-            need_rag:
-              children: null
-              type: boolean
-            response:
-              children: null
-              type: string
-            type:
-              children: null
-              type: string
-          title: 意图识别
-          type: code
-          variables:
-            - value_selector:
-                - sys
-                - query
-              variable: query
-        height: 54
-        id: '1754400000002'
+            分类优先级：含明确人工介入/系统故障/投诉诉求 → 类2；含制度/流程/业务知识咨询 → 类3；纯寒暄或礼貌语 → 类1；无法归入前两类的其余输入 → 类3（默认走知识问答）。
+          memory:
+            enabled: true
+            window:
+              enabled: true
+              size: 5
+          model:
+            completion_params:
+              temperature: 0
+            mode: chat
+            name: deepseek-chat
+            provider: deepseek
+          query_variable_selector:
+            - sys
+            - query
+          title: 问题分类器
+          type: question-classifier
+        height: 90
+        id: '1754600000002'
         position:
           x: 384
           y: 282
@@ -293,49 +247,39 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 3. 直接回复 问候应答（固定文案） ====================
       - data:
-          cases:
-            - case_id: 'true'
-              conditions:
-                - comparison_operator: in
-                  id: '1754400000012'
-                  value:
-                    - greeting
-                    - thanks
-                    - farewell
-                    - human_service
-                  varType: string
-                  variable_selector:
-                    - '1754400000002'
-                    - type
-              id: 'true'
-              logical_operator: and
-          desc: 打招呼/感谢/告别/转人工 -> 固定应答；其余 -> 知识检索
-          title: 条件分支1
-          type: if-else
-        height: 126
-        id: '1754400000003'
-        position:
-          x: 688
-          y: 282
-        sourcePosition: right
-        targetPosition: left
-        type: custom
-        width: 244
-      - data:
-          answer: '{{#1754400000002.response#}}'
-          desc: 输出意图识别生成的固定应答话术
-          title: 固定应答
+          answer: |-
+            您好！我是 恒生智能办公助手 企业知识问答助手，可以为您解答公司制度、流程规范、业务操作等问题。请问有什么可以帮您？
+          desc: 问候与闲聊的固定应答，不进入知识检索链路
+          title: 问候应答
           type: answer
         height: 105
-        id: '1754400000004'
+        id: '1754600000003'
         position:
-          x: 992
-          y: 120
+          x: 688
+          y: 80
         sourcePosition: right
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 4. 直接回复 转人工应答（固定文案） ====================
+      - data:
+          answer: |-
+            已为您转接人工服务通道。如需帮助，请联系行政部或 IT 支持（分机 8000），或通过企业办公系统提交工单，相关同事会尽快与您联系。
+          desc: 转人工/系统故障/投诉等诉求的固定应答
+          title: 转人工应答
+          type: answer
+        height: 105
+        id: '1754600000004'
+        position:
+          x: 688
+          y: 480
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      # ==================== 5. 知识检索 ====================
       - data:
           dataset_ids: []
           desc: 从企业知识库中检索相关制度、流程、规范内容（导入后请绑定知识库）
@@ -350,46 +294,48 @@ workflow:
           title: 知识检索
           type: knowledge-retrieval
         height: 90
-        id: '1754400000005'
+        id: '1754600000005'
         position:
           x: 992
-          y: 380
+          y: 282
         sourcePosition: right
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 6. 条件分支 检索结果是否为空 ====================
       - data:
           cases:
             - case_id: 'true'
               conditions:
                 - comparison_operator: not empty
-                  id: '1754400000013'
+                  id: cond-retrieval-nonempty
                   value: ''
                   varType: array[object]
                   variable_selector:
-                    - '1754400000005'
+                    - '1754600000005'
                     - result
               id: 'true'
               logical_operator: and
-          desc: 检索结果非空 -> RAG 回答；检索结果为空 -> 闲聊兜底
-          title: 条件分支2
+          desc: 检索结果非空 → RAG 回答；检索结果为空 → 闲聊兜底
+          title: 检索判断
           type: if-else
         height: 126
-        id: '1754400000006'
+        id: '1754600000006'
         position:
           x: 1296
-          y: 380
+          y: 282
         sourcePosition: right
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 7. LLM RAG 回答 ====================
       - data:
           context:
             enabled: true
             variable_selector:
-              - '1754400000005'
+              - '1754600000005'
               - result
-          desc: 基于知识库检索结果进行 RAG 回答
+          desc: 基于知识库检索结果进行 RAG 精准回答
           model:
             completion_params:
               temperature: 0.3
@@ -399,11 +345,11 @@ workflow:
             name: deepseek-chat
             provider: deepseek
           prompt_template:
-            - id: '1754400000014'
+            - id: prompt-rag-system
               role: system
               text: |
                 # 角色
-                你是「FinPilot 企业知识助手」，服务于金融企业内部的员工知识问答场景，专业、严谨、友好，专注于解答公司制度、流程规范、业务操作等问题。
+                你是「恒生智能办公助手 企业知识助手」，服务于金融企业内部的员工知识问答场景，专业、严谨、友好，专注于解答公司制度、流程规范、业务操作等问题。
 
                 # 重要参数
                 知识库检索结果：{{#context#}}
@@ -424,9 +370,9 @@ workflow:
 
                 # 限制
                 - 仅回答与企业办公、制度流程相关的问题，无关话题礼貌拒绝；
-                - 不编造、不测，无法确认的信息明确说明；
+                - 不编造、不臆测，无法确认的信息明确说明；
                 - 回答末尾注明信息来源的制度文档名称（若检索结果中有）。
-            - id: '1754400000015'
+            - id: prompt-rag-user
               role: user
               text: |
                 用户输入问题：{{#sys.query#}}
@@ -436,14 +382,15 @@ workflow:
           vision:
             enabled: false
         height: 98
-        id: '1754400000007'
+        id: '1754600000007'
         position:
           x: 1600
-          y: 282
+          y: 182
         sourcePosition: right
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 8. LLM 闲聊兜底 ====================
       - data:
           context:
             enabled: false
@@ -458,10 +405,10 @@ workflow:
             name: deepseek-chat
             provider: deepseek
           prompt_template:
-            - id: '1754400000016'
+            - id: prompt-chitchat-system
               role: system
               text: |
-                你是「FinPilot 企业办公助手」，服务于金融企业内部员工。
+                你是「恒生智能办公助手 企业办公助手」，服务于金融企业内部员工。
 
                 你的职责：
                 1. 对于办公通识类问题（如办公软件使用技巧、职场礼仪、通用名词解释、效率方法等），给出清晰、实用、可操作的回答；
@@ -471,7 +418,7 @@ workflow:
                 - 语气友好专业，条理清晰，适当使用分点；
                 - 回答结尾必须注明「以上答案仅供参考」；
                 - 禁止提及「知识库」「检索」「未检索到」等字样，不要向用户解释你的内部工作机制。
-            - id: '1754400000017'
+            - id: prompt-chitchat-user
               role: user
               text: |
                 用户问题：{{#sys.query#}}
@@ -481,7 +428,7 @@ workflow:
           vision:
             enabled: false
         height: 98
-        id: '1754400000009'
+        id: '1754600000008'
         position:
           x: 1600
           y: 480
@@ -489,27 +436,29 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 9. 直接回复 RAG 回答输出 ====================
       - data:
-          answer: '{{#1754400000007.text#}}'
+          answer: '{{#1754600000007.text#}}'
           desc: 输出 RAG 回答内容
           title: RAG回答输出
           type: answer
         height: 105
-        id: '1754400000010'
+        id: '1754600000009'
         position:
           x: 1904
-          y: 282
+          y: 182
         sourcePosition: right
         targetPosition: left
         type: custom
         width: 244
+      # ==================== 10. 直接回复 闲聊兜底输出 ====================
       - data:
-          answer: '{{#1754400000009.text#}}'
+          answer: '{{#1754600000008.text#}}'
           desc: 输出闲聊兜底回答内容
           title: 闲聊回答输出
           type: answer
         height: 105
-        id: '1754400000011'
+        id: '1754600000010'
         position:
           x: 1904
           y: 480
@@ -517,3 +466,7 @@ workflow:
         targetPosition: left
         type: custom
         width: 244
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.6

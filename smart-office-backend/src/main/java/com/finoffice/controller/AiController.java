@@ -3,14 +3,12 @@ package com.finoffice.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.finoffice.common.BizException;
 import com.finoffice.common.R;
-import com.finoffice.config.DeepSeekConfig;
 import com.finoffice.config.SseHeartbeat;
 import com.finoffice.entity.AgentConfig;
 import com.finoffice.entity.AiMessage;
 import com.finoffice.entity.AiSession;
 import com.finoffice.mapper.AgentConfigMapper;
 import com.finoffice.service.AiSessionService;
-import com.finoffice.service.DeepSeekService;
 import com.finoffice.service.DifyService;
 import jakarta.annotation.Resource;
 import lombok.Data;
@@ -22,11 +20,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
  * AI 会话接口
- * 优先级：Dify > DeepSeek 直连 > Mock 兜底
+ * 优先级：Dify > Mock 兜底
  */
 @Slf4j
 @RestController
@@ -35,11 +34,10 @@ import java.util.concurrent.ExecutorService;
 public class AiController {
 
     private final AiSessionService aiSessionService;
-    private final DeepSeekService deepSeekService;
     private final DifyService difyService;
-    private final DeepSeekConfig deepSeekConfig;
     private final AgentConfigMapper agentConfigMapper;
     private final SseHeartbeat heartbeat;
+    private final com.finoffice.service.kb.ToolUseAgentService toolUseAgentService;
 
     /** 共享有界线程池（AsyncConfig#aiSseExecutor），替换原无界 Executors.newCachedThreadPool() */
     @Resource(name = "aiSseExecutor")
@@ -92,7 +90,7 @@ public class AiController {
 
     /**
      * 发送消息（SSE 流式返回）
-     * 优先级：Agent 配置了 difyAppId → Dify > DeepSeek > Mock 兜底
+     * 优先级：Agent 配置了 difyAppId → Dify > Mock 兜底
      */
     @PostMapping(value = "/chat", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter chat(@RequestBody ChatReq req) {
@@ -178,29 +176,21 @@ public class AiController {
                             }
                     );
                 } catch (Exception e) {
-                    // Dify 调用失败，降级到 DeepSeek
-                    log.warn("Dify API 调用失败，降级到 DeepSeek: {}", e.getMessage());
-                    fallbackToDeepSeek(emitter, sid, req, agent);
+                    log.warn("Dify API 调用失败，降级到 Mock: {}", e.getMessage());
+                    sendMockStream(emitter, sid, mockAnswer(req.getMessage()));
                 }
             });
             return emitter;
         }
 
-        // 优先级2：DeepSeek 直连
-        if (deepSeekConfig.isEnabled() && deepSeekConfig.getApiKey() != null
-                && !deepSeekConfig.getApiKey().isBlank()) {
-            fallbackToDeepSeek(emitter, sid, req, agent);
-            return emitter;
-        }
-
-        // 优先级3：Mock 兜底
+        // 优先级2：Mock 兜底
         sendMockStream(emitter, sid, mockAnswer(req.getMessage()));
         return emitter;
     }
 
     /**
      * 调用 Dify Workflow 型应用（blocking 模式），结果一次性作为一个 message 块发出，
-     * 失败时复用现有 DeepSeek/Mock 降级框架
+     * 失败时降级 Mock。
      */
     private void runDifyWorkflow(SseEmitter emitter, Long sid, ChatReq req, AgentConfig agent, long userId) {
         final String difyAppApiKey = agent.getDifyAppId();
@@ -219,52 +209,7 @@ public class AiController {
             } catch (IOException e) {
                 emitter.completeWithError(e);
             } catch (Exception e) {
-                // Dify Workflow 调用失败，降级到 DeepSeek
-                log.warn("Dify Workflow 调用失败，降级到 DeepSeek: {}", e.getMessage());
-                fallbackToDeepSeek(emitter, sid, req, agent);
-            }
-        });
-    }
-    /**
-     * 降级到 DeepSeek 直连
-     */
-    private void fallbackToDeepSeek(SseEmitter emitter, Long sid, ChatReq req, AgentConfig agent) {
-        String systemPrompt = "你是一个专业的企业办公助手，请用简洁、专业的方式回答用户问题。";
-        if (agent != null && agent.getSystemPrompt() != null && !agent.getSystemPrompt().isBlank()) {
-            systemPrompt = agent.getSystemPrompt();
-        }
-
-        final String sysPrompt = systemPrompt;
-        final StringBuilder fullAnswer = new StringBuilder();
-
-        executor.submit(() -> {
-            try {
-                deepSeekService.streamChat(
-                        sysPrompt,
-                        req.getMessage(),
-                        chunk -> {
-                            try {
-                                fullAnswer.append(chunk);
-                                emitter.send(SseEmitter.event().name("message").data(chunk));
-                            } catch (IOException e) {
-                                log.warn("SSE 发送 chunk 失败: {}", e.getMessage());
-                            }
-                        },
-                        () -> {
-                            try {
-                                String answer = fullAnswer.toString();
-                                aiSessionService.saveMessage(sid, "assistant", answer);
-                                aiSessionService.incrementMsgCount(sid, 2);
-                                emitter.send(SseEmitter.event().name("done").data("[DONE]"));
-                                emitter.complete();
-                            } catch (IOException e) {
-                                emitter.completeWithError(e);
-                            }
-                        }
-                );
-            } catch (Exception e) {
-                // DeepSeek 调用也失败，降级到 Mock 兜底
-                log.warn("DeepSeek API 调用失败，降级到 Mock 兜底: {}", e.getMessage());
+                log.warn("Dify Workflow 调用失败，降级到 Mock: {}", e.getMessage());
                 sendMockStream(emitter, sid, mockAnswer(req.getMessage()));
             }
         });
@@ -298,5 +243,19 @@ public class AiController {
                 + "当前 Dify 大模型服务尚未接入，这是一条模拟回复，用于验证前后端流式对话链路。\n"
                 + "你刚才问的是：「" + question + "」。\n"
                 + "待管理员配置 Dify 地址与 API Key 后，这里将由真实大模型结合企业知识库进行回答，并附带引用来源。";
+    }
+
+    /** Tool Use Agent：用自然语言让 AI 执行实际操作（阶段4） */
+    @PostMapping("/agent-exec")
+    public R<Map<String, Object>> agentExec(@RequestBody Map<String, String> body) {
+        String command = body.get("command");
+        if (command == null || command.isBlank()) {
+            throw new BizException("指令不能为空");
+        }
+        Long userId = StpUtil.getLoginIdAsLong();
+        String result = toolUseAgentService.execute(userId, command);
+        Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("result", result);
+        return R.ok(resp);
     }
 }

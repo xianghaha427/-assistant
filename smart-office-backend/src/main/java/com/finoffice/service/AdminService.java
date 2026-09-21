@@ -10,6 +10,8 @@ import com.finoffice.entity.SysLog;
 import com.finoffice.entity.SysRole;
 import com.finoffice.entity.SysUser;
 import com.finoffice.entity.SysUserRole;
+import com.finoffice.entity.AgentConfig;
+import com.finoffice.mapper.AgentConfigMapper;
 import com.finoffice.mapper.SysDeptMapper;
 import com.finoffice.mapper.SysLogMapper;
 import com.finoffice.mapper.SysRoleMapper;
@@ -36,8 +38,10 @@ public class AdminService {
     private final SysUserRoleMapper userRoleMapper;
     private final SysDeptMapper deptMapper;
     private final SysLogMapper logMapper;
+    private final AgentConfigMapper agentConfigMapper;
 
     private static final BCryptPasswordEncoder ENCODER = new BCryptPasswordEncoder();
+    private static final long AGENT_ID_KNOWLEDGE = 1L;
 
     /** 校验当前用户是否为 ADMIN */
     public void checkAdmin() {
@@ -145,6 +149,29 @@ public class AdminService {
         result.put("records", pageObj.getRecords());
         result.put("total", pageObj.getTotal());
         return result;
+    }
+
+    /** 当前知识库回答引擎 */
+    public Map<String, Object> getKnowledgeEngine() {
+        AgentConfig agent = agentConfigMapper.selectById(AGENT_ID_KNOWLEDGE);
+        String engine = agent == null || agent.getEngine() == null || agent.getEngine().isBlank()
+                ? "dify" : agent.getEngine();
+        return Map.of("engine", engine);
+    }
+
+    /** 切换知识库回答引擎：dify / native */
+    public void updateKnowledgeEngine(String engine) {
+        if (!"dify".equalsIgnoreCase(engine) && !"native".equalsIgnoreCase(engine)) {
+            throw new BizException("知识库引擎只能选择 dify 或 native");
+        }
+        AgentConfig agent = agentConfigMapper.selectById(AGENT_ID_KNOWLEDGE);
+        if (agent == null) {
+            throw new BizException("企业知识问答助手配置不存在");
+        }
+        String normalized = engine.toLowerCase();
+        agent.setEngine(normalized);
+        agentConfigMapper.updateById(agent);
+        OpLogger.log(StpUtil.getLoginIdAsLong(), "KNOWLEDGE", "切换知识库引擎", "engine=" + normalized);
     }
 
     /** 给用户分配角色 */

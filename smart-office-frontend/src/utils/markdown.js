@@ -7,8 +7,10 @@
 export function renderMd(text) {
   const src = String(text || '')
   if (!src.trim()) return ''
+  // 0. 去除 ```echarts 代码块（只用于 AI 对话图表，简报不显示）
+  const clean = src.replace(/```echarts[\s\S]*?```/g, '')
   // 1. 转义 HTML，防注入
-  const esc = src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const esc = clean.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const lines = esc.split('\n')
   const out = []
   let list = null // 'ul' | 'ol' | null

@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { pptGenerate, pptDownload } from '../../api/writer'
 
 const topic = ref('')
+const style = ref('正式商务')
 const generating = ref(false)
 const downloading = ref(false)
 /** 生成完成后的记录 { id, title, pages, source } */
@@ -45,7 +46,7 @@ async function submit() {
   record.value = null
   startProgress()
   try {
-    record.value = await pptGenerate(topic.value.trim())
+    record.value = await pptGenerate(topic.value.trim(), style.value)
     ElMessage.success('PPT 生成完成，可下载文件')
   } catch (e) {
     ElMessage.error(e?.message || 'PPT 生成失败，请稍后重试')
@@ -89,6 +90,13 @@ onBeforeUnmount(stopProgress)
             @keyup.enter="submit"
           />
         </el-form-item>
+        <el-form-item label="生成风格">
+          <el-select v-model="style" :disabled="generating" class="style-select">
+            <el-option label="正式商务" value="正式商务" />
+            <el-option label="简洁现代" value="简洁现代" />
+            <el-option label="数据驱动" value="数据驱动" />
+          </el-select>
+        </el-form-item>
         <el-button type="primary" class="submit-btn" :loading="generating" @click="submit">
           {{ generating ? '生成中…' : '生成 PPT' }}
         </el-button>
@@ -114,7 +122,7 @@ onBeforeUnmount(stopProgress)
           <span class="dot">·</span>
           <span>含演讲备注</span>
           <span class="dot">·</span>
-          <span>微软雅黑简洁商务风</span>
+          <span>{{ record.style || style }} 风格</span>
         </div>
       </div>
       <el-button type="primary" :loading="downloading" @click="download">
@@ -142,6 +150,7 @@ onBeforeUnmount(stopProgress)
 }
 .page-head .page-title { margin: 0; }
 .submit-btn { width: 100%; }
+.style-select { width: 220px; }
 
 /* 进度态 */
 .ppt-progress-card {

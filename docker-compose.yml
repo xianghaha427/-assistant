@@ -1,0 +1,62 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: finpilot-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-123456}
+      MYSQL_DATABASE: smart_office
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./smart-office-backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./.docker/init-demo.sql:/docker-entrypoint-initdb.d/02-demo.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  whisper:
+    build: ./faster-whisper-service
+    container_name: finpilot-whisper
+    ports:
+      - "8766:8766"
+    restart: unless-stopped
+
+  backend:
+    build: ./smart-office-backend
+    container_name: finpilot-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/smart_office?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-123456}
+      FINPILOT_ENGINE_ENABLED: "true"
+      FINPILOT_RAG_OLLAMA_BASE_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      FINPILOT_WHISPER_BASE_URL: http://whisper:8766
+      FINPILOT_WHISPER_ENABLED: "true"
+      FINPILOT_RAG_DOCS_PATH: /app/knowledge-docs
+      DINGTALK_ENABLED: "false"
+    volumes:
+      - upload_data:/app/uploads
+      - ./knowledge-docs:/app/knowledge-docs:ro
+    restart: unless-stopped
+
+  frontend:
+    build: ./smart-office-frontend
+    container_name: finpilot-frontend
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  upload_data:

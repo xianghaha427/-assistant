@@ -8,6 +8,7 @@ import com.finoffice.entity.KbDocument;
 import com.finoffice.entity.MeetingActionItem;
 import com.finoffice.entity.MeetingRecord;
 import com.finoffice.entity.SysUser;
+import com.finoffice.entity.Task;
 import com.finoffice.mapper.AiMessageMapper;
 import com.finoffice.mapper.AiSessionMapper;
 import com.finoffice.mapper.BriefingRecordMapper;
@@ -15,6 +16,7 @@ import com.finoffice.mapper.KbDocumentMapper;
 import com.finoffice.mapper.MeetingActionItemMapper;
 import com.finoffice.mapper.MeetingRecordMapper;
 import com.finoffice.mapper.SysUserMapper;
+import com.finoffice.mapper.TaskMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,6 +54,7 @@ public class WorkbenchService {
     private final KbDocumentMapper kbDocumentMapper;
     private final SysUserMapper userMapper;
     private final BriefingRecordMapper briefingMapper;
+    private final TaskMapper taskMapper;
     private final DataScopeHelper dataScopeHelper;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
@@ -119,56 +122,27 @@ public class WorkbenchService {
     /* ==================== 我的待办 ==================== */
 
     private List<Map<String, Object>> myTodos(DataScopeHelper.UserScope scope) {
-        SysUser user = userMapper.selectById(scope.userId());
-        String realName = user == null ? null : user.getRealName();
+        // 查询分配给当前用户的未完成任务（pending + in_progress），优先高优先级 + 截止日期近的
+        List<Task> tasks = taskMapper.selectList(
+                new LambdaQueryWrapper<Task>()
+                        .eq(Task::getAssigneeUserId, scope.userId())
+                        .in(Task::getStatus, "pending", "in_progress")
+                        .orderByAsc(Task::getPriority)
+                        .orderByAsc(Task::getDeadline)
+                        .last("LIMIT 5"));
 
-        // 我创建的会议 ID 集合
-        List<Long> myMeetingIds = meetingMapper.selectList(
-                        new LambdaQueryWrapper<MeetingRecord>()
-                                .eq(MeetingRecord::getUserId, scope.userId())
-                                .select(MeetingRecord::getId))
-                .stream().map(MeetingRecord::getId).collect(Collectors.toList());
-
-        boolean hasName = realName != null && !realName.isBlank();
-        LambdaQueryWrapper<MeetingActionItem> wrapper = new LambdaQueryWrapper<>();
-        if (hasName && !myMeetingIds.isEmpty()) {
-            wrapper.and(q -> q.eq(MeetingActionItem::getAssignee, realName)
-                    .or().in(MeetingActionItem::getMeetingId, myMeetingIds));
-        } else if (hasName) {
-            wrapper.eq(MeetingActionItem::getAssignee, realName);
-        } else if (!myMeetingIds.isEmpty()) {
-            wrapper.in(MeetingActionItem::getMeetingId, myMeetingIds);
-        } else {
-            return Collections.emptyList();
-        }
-
-        List<MeetingActionItem> items = actionItemMapper.selectList(wrapper);
-        if (items.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        // 批量取会议标题
-        Set<Long> meetingIds = items.stream().map(MeetingActionItem::getMeetingId).collect(Collectors.toSet());
-        Map<Long, String> titleMap = meetingMapper.selectBatchIds(meetingIds).stream()
-                .collect(Collectors.toMap(MeetingRecord::getId, MeetingRecord::getTitle, (a, b) -> a));
-
-        // pending 优先，deadline 升序（null 排最后），Top 5
-        items.sort(Comparator
-                .comparingInt((MeetingActionItem i) -> "pending".equals(i.getStatus()) ? 0 : 1)
-                .thenComparing(MeetingActionItem::getDeadline, Comparator.nullsLast(Comparator.naturalOrder())));
+        if (tasks.isEmpty()) return Collections.emptyList();
 
         List<Map<String, Object>> result = new ArrayList<>();
-        for (MeetingActionItem item : items) {
-            if (result.size() >= 5) {
-                break;
-            }
+        for (Task t : tasks) {
             Map<String, Object> vo = new LinkedHashMap<>();
-            vo.put("id", item.getId());
-            vo.put("meeting_id", item.getMeetingId());
-            vo.put("meeting_title", titleMap.get(item.getMeetingId()));
-            vo.put("content", item.getContent());
-            vo.put("deadline", item.getDeadline() == null ? null : D_FMT.format(item.getDeadline()));
-            vo.put("status", item.getStatus());
+            vo.put("id", t.getId());
+            vo.put("content", t.getTitle());
+            vo.put("priority", t.getPriority());
+            vo.put("status", t.getStatus());
+            vo.put("deadline", t.getDeadline() == null ? null : D_FMT.format(t.getDeadline()));
+            vo.put("assignee_name", t.getAssigneeUserId() != null
+                    ? userMapper.selectById(t.getAssigneeUserId()).getRealName() : null);
             result.add(vo);
         }
         return result;

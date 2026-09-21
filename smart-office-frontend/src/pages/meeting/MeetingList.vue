@@ -1,36 +1,15 @@
 <template>
   <div class="meeting-list">
     <!-- ====== Hero 区域 ====== -->
-    <div class="hero card">
-      <div class="hero-orb hero-orb-1"></div>
-      <div class="hero-orb hero-orb-2"></div>
-      <div class="hero-grid"></div>
-
+    <div class="hero">
       <div class="hero-main">
-        <h1 class="hero-title">
-          智能<span class="grad-text">会议</span>
-        </h1>
-        <p class="hero-sub">
-          AI 驱动的会议纪要生成，从转写文本到结构化纪要，一键完成
-        </p>
-
-        <div class="hero-actions">
-          <button class="hero-btn primary" @click="$router.push('/meeting/create')">
-            <span class="btn-icon">＋</span> 新建会议
-          </button>
-        </div>
+        <h1 class="page-title">会议中心</h1>
+        <p class="page-subtitle">AI 驱动的会议纪要生成，从转写文本到结构化纪要，一键完成</p>
+        <el-button type="primary" @click="$router.push('/meeting/create')">新建会议</el-button>
       </div>
-
       <div class="hero-stats">
-        <div class="hero-stat">
-          <div class="stat-num grad-text">{{ meetings.length }}</div>
-          <div class="stat-label">会议总数</div>
-        </div>
-        <div class="hero-stat-divider"></div>
-        <div class="hero-stat">
-          <div class="stat-num grad-text">{{ completedCount }}</div>
-          <div class="stat-label">已完成</div>
-        </div>
+        <div class="hero-stat"><span class="hero-stat-num">{{ meetings.length }}</span><span class="hero-stat-label">会议总数</span></div>
+        <div class="hero-stat"><span class="hero-stat-num">{{ completedCount }}</span><span class="hero-stat-label">已完成</span></div>
       </div>
     </div>
 
@@ -45,12 +24,10 @@
     </div>
 
     <div v-else-if="meetings.length === 0" class="empty-state">
-      <div class="empty-icon">📄</div>
+      <Calendar :size="40" color="var(--border-strong)" />
       <div class="empty-title">暂无会议记录</div>
       <div class="empty-desc">上传会议转写文本或音频，AI 将自动生成结构化纪要</div>
-      <button class="hero-btn primary" @click="$router.push('/meeting/create')">
-        创建第一次会议
-      </button>
+      <el-button type="primary" @click="$router.push('/meeting/create')">创建第一次会议</el-button>
     </div>
 
     <div v-else class="meeting-grid">
@@ -91,6 +68,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMeetings, deleteMeeting } from '../../api/meeting.js'
+import { Calendar } from 'lucide-vue-next'
 
 const router = useRouter()
 const meetings = ref([])
@@ -257,36 +235,19 @@ function formatTime(t) {
 .meeting-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  gap: 24px;
 }
 
 .meeting-card {
-  position: relative;
-  padding: 22px;
+  padding: 24px;
   cursor: pointer;
-  transition: all 0.22s ease;
-  overflow: hidden;
-  animation: fadeUp 0.4s ease both;
-}
-.meeting-card::after {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: var(--grad-aurora);
-  opacity: 0;
-  transition: opacity 0.22s ease;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
 }
 .meeting-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md), var(--glow-soft);
-}
-.meeting-card:hover::after { opacity: 1; }
-
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  transform: translateY(-2px);
+  border-color: var(--accent-light);
+  box-shadow: var(--shadow-md);
 }
 
 .card-top {

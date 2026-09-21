@@ -5,13 +5,12 @@ import com.finoffice.entity.AgentConfig;
 import com.finoffice.mapper.AgentConfigMapper;
 import com.finoffice.service.KnowledgeService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
  * 知识问答引擎路由（阶段1双通道）：
  * 读 agent_config#1 的 engine 列（'native'/'dify'，默认 dify）；
- * native 时调自研引擎；任何异常 / 空密钥 / Bean 缺失 → OpLogger + log.warn 留痕后返回 null，
+ * native 时调自研引擎；任何异常 / Bean 缺失 → OpLogger + log.warn 留痕后返回 null，
  * 由调用方（KnowledgeService）回落现有 Dify 链路。留痕风格对齐 MeetingService fail_reason 模式。
  */
 @Slf4j
@@ -22,9 +21,6 @@ public class KnowledgeEngineRouter {
 
     private final AgentConfigMapper agentConfigMapper;
     private final NativeKnowledgeEngine nativeEngine;
-
-    @Value("${deepseek.api-key:}")
-    private String deepseekApiKey;
 
     public KnowledgeEngineRouter(AgentConfigMapper agentConfigMapper, NativeKnowledgeEngine nativeEngine) {
         this.agentConfigMapper = agentConfigMapper;
@@ -47,11 +43,6 @@ public class KnowledgeEngineRouter {
             return null;
         }
         if (!"native".equalsIgnoreCase(engine)) {
-            return null;
-        }
-        if (deepseekApiKey == null || deepseekApiKey.isBlank()) {
-            log.warn("知识问答 engine=native 但 DeepSeek 密钥为空，回落 Dify");
-            OpLogger.log(userId, "KNOWLEDGE", "native-engine-fallback", "DeepSeek 密钥为空，知识问答回落 Dify");
             return null;
         }
         try {

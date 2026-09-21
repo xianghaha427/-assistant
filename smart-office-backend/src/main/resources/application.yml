@@ -9,6 +9,10 @@ logging:
 spring:
   application:
     name: smart-office-backend
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
   datasource:
     url: jdbc:mysql://localhost:3306/smart_office?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
@@ -50,29 +54,31 @@ dify:
   base-url: https://api.dify.ai/v1
   api-key: ""
 
-# DeepSeek 直连配置（三级降级第2级，Dify 不可用时启用）
-# 密钥说明：git 全历史中从未配置过真实 key（自首个提交起 api-key 即为空）。
-#   需用户自行前往 https://platform.deepseek.com/api_keys 创建密钥后填入下方 api-key；
-#   为空时该级降级将 401 失败并自动落入第3级 Mock，不影响主流程。
-deepseek:
-  api-key: """
-  base-url: https://api.deepseek.com
-  model: deepseek-chat
-  enabled: true
-
 # 文件上传目录
 app:
   upload-path: ./uploads
 
 dingtalk:
-  enabled: false
-  webhook-url: ""
+  enabled: true
+  webhook-url: "https://oapi.dingtalk.com/robot/send?access_token=b0900c627ca57bc491dd435598e50a3310a9dd09802fa382b097b6aa4a3aed81"
   secret: ""
 
 # ---- 阶段1：FinPilot 自研知识引擎开关（LangChain4j 双通道）----
 # enabled=true 装配自研引擎 Bean；知识问答是否走自研由 agent_config#1 engine 列决定，
-# 自研异常/密钥为空时自动回落 Dify 链路。密钥段（deepseek.api-key）保持不动。
+# 自研异常时自动回落 Dify 链路。
 finpilot:
   engine:
     enabled: true
     timeout-seconds: 120
+  # ---- 阶段2：自建 RAG 检索引擎（Ollama Embedding + 内存向量索引）----
+  # 知识问答 engine=native 时优先走自研 RAG（检索+生成），Ollama 不可用时自动退化为纯 LLM 模式。
+  rag:
+    ollama-base-url: http://localhost:11434
+    embedding-model: nomic-embed-text   # Ollama 拉取: ollama pull nomic-embed-text
+    local-model: qwen2.5:latest         # 本地安全通道模型
+    docs-path: ../knowledge-docs        # 知识库文档目录（相对于 smart-office-backend 工作目录）
+    top-k: 4                            # 检索返回片段数
+  # ---- 阶段3：语音转写（Faster-Whisper Python 微服务）----
+  whisper:
+    enabled: true                       # 未启动微服务时关闭
+    base-url: http://localhost:8766
