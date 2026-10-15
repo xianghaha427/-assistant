@@ -16,6 +16,7 @@ import com.finoffice.mapper.AgentConfigMapper;
 import com.finoffice.mapper.MeetingActionItemMapper;
 import com.finoffice.mapper.MeetingRecordMapper;
 import com.finoffice.mapper.SysUserMapper;
+import com.finoffice.service.kb.DocumentTextExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,7 @@ public class MeetingService {
     private final SysUserMapper userMapper;
     private final AudioTranscriptionService whisperService;
     private final NotificationService notificationService;
+    private final DocumentTextExtractor documentTextExtractor;
 
     /** 会议纪要助手智能体 ID（agent_config） */
     private static final long SUMMARY_AGENT_ID = 2L;
@@ -435,6 +437,29 @@ public class MeetingService {
 
     /** 纪要文档允许的文件类型（与前端文档上传 Tab 一致） */
     private static final java.util.Set<String> DOC_EXTENSIONS = java.util.Set.of("pdf", "md", "docx", "txt");
+
+    /** 解析会议文档为纯文本，避免把 Dify 无法接收的二进制文件直接传给 Agent */
+    public Map<String, Object> extractMeetingFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException("上传文件不能为空");
+        }
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "meeting.txt";
+        String ext = originalName.contains(".")
+                ? originalName.substring(originalName.lastIndexOf('.') + 1).toLowerCase()
+                : "";
+        if (!DOC_EXTENSIONS.contains(ext)) {
+            throw new BizException("仅支持 pdf/md/docx/txt 格式的会议文档");
+        }
+        String text = documentTextExtractor.extract(file, ext);
+        if (text == null || text.isBlank()) {
+            throw new BizException("文档未识别出可用文字，请确认文件不是扫描图片或空文件");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("file_name", originalName);
+        result.put("text", text.trim());
+        result.put("text_length", text.trim().length());
+        return result;
+    }
 
     /** 纪要文档直传 Dify（files/upload，使用会议纪要助手密钥），返回 dify_file_id 与文件名 */
     public Map<String, Object> uploadMeetingFile(MultipartFile file, Long userId) {

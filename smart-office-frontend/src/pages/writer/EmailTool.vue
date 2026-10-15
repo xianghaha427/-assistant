@@ -1,13 +1,17 @@
 <script setup>
-import { reactive } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useWriter } from '../../composables/useWriter'
+import { sendWriterMessage } from '../../api/writer'
+import { getUserOptions } from '../../api'
 
 const { result, loading, source, sourceLabels, generate, copyResult } = useWriter('email')
+const users = ref([])
+const sending = ref(false)
 
 const form = reactive({
   scene: '汇报',
-  recipient: '',
+  recipientUserIds: [],
   points: '',
   tone: '专业得体'
 })
@@ -17,8 +21,21 @@ function submit() {
     ElMessage.warning('请填写邮件要点')
     return
   }
-  generate({ ...form })
+  const names = users.value.filter(u => form.recipientUserIds.includes(u.id)).map(u => u.real_name || u.username).join('、')
+  generate({ scene: form.scene, recipient: names || '指定员工', points: form.points, tone: form.tone })
 }
+
+const recipientNames = computed(() => users.value.filter(u => form.recipientUserIds.includes(u.id)).map(u => u.real_name || u.username).join('、'))
+async function sendEmail() {
+  if (!form.recipientUserIds.length) { ElMessage.warning('请先选择收件员工'); return }
+  sending.value = true
+  try {
+    await sendWriterMessage({ type: 'email', title: `邮件助手：${form.scene}`, content: result.value, recipientUserIds: form.recipientUserIds })
+    ElMessage.success(`邮件已发送给 ${recipientNames.value}`)
+  } catch (e) { ElMessage.error(e.message || '邮件发送失败') }
+  finally { sending.value = false }
+}
+onMounted(async () => { try { users.value = await getUserOptions() || [] } catch (e) {} })
 </script>
 
 <template>
@@ -40,8 +57,10 @@ function submit() {
               <el-option label="致歉" value="致歉" />
             </el-select>
           </el-form-item>
-          <el-form-item label="收件人（可选）">
-            <el-input v-model="form.recipient" placeholder="例如：部门领导 / 信息技术部 王经理" />
+          <el-form-item label="收件员工" required>
+            <el-select v-model="form.recipientUserIds" multiple filterable collapse-tags placeholder="选择员工" style="width:100%">
+              <el-option v-for="user in users" :key="user.id" :label="user.real_name || user.username" :value="user.id" />
+            </el-select>
           </el-form-item>
           <el-form-item label="邮件要点" required>
             <el-input
@@ -72,6 +91,7 @@ function submit() {
             <el-tag v-if="source" size="small" effect="plain">{{ sourceLabels[source] || source }}</el-tag>
             <el-tag v-if="loading" size="small" type="info" effect="plain">流式生成中…</el-tag>
             <el-button size="small" :disabled="!result || loading" @click="copyResult">复制</el-button>
+            <el-button size="small" type="primary" :loading="sending" :disabled="!result || loading" @click="sendEmail">发送邮件</el-button>
           </div>
         </div>
         <pre v-if="result" class="result-text">{{ result }}<span v-if="loading" class="caret"></span></pre>

@@ -1,7 +1,7 @@
 <template>
   <div class="profile-page">
     <div class="profile-header">
-      <h2 class="page-title">个人<span class="grad-text">中心</span></h2>
+      <h2 class="page-title">个人中心</h2>
       <div class="page-subtitle">管理您的个人信息与账户安全</div>
     </div>
 
@@ -286,11 +286,11 @@ async function handleChangePassword() {
 }
 
 .user-avatar-lg {
-  background: var(--grad-brand);
+  background: var(--accent);
   color: #fff;
   font-size: 28px;
   font-weight: 600;
-  box-shadow: 0 0 30px rgba(8, 180, 188, 0.4);
+  box-shadow: none;
 }
 
 .avatar-overlay {

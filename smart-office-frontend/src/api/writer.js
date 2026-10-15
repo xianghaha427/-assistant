@@ -84,6 +84,13 @@ export async function writerGenerate(payload, handlers, signal) {
   }
 }
 
+export async function sendWriterMessage(payload) {
+  const resp = await raw.post('/writer/send', payload)
+  const body = resp.data
+  if (!body || body.code !== 0) throw new Error(body?.msg || '发送失败')
+  return body.data
+}
+
 /**
  * PPT大纲生成（blocking，返回 { id, title, pages, source, style }）
  */

@@ -6,6 +6,9 @@ import com.finoffice.config.SseHeartbeat;
 import com.finoffice.entity.AgentConfig;
 import com.finoffice.mapper.AgentConfigMapper;
 import com.finoffice.service.DifyService;
+import com.finoffice.service.InboxService;
+import com.finoffice.common.R;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.annotation.Resource;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +18,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -38,6 +44,8 @@ public class WritingController {
     private final DifyService difyService;
     private final AgentConfigMapper agentConfigMapper;
     private final SseHeartbeat heartbeat;
+    private final InboxService inboxService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     /** 共享有界线程池（AsyncConfig#aiSseExecutor），替换原无界 Executors.newCachedThreadPool() */
     @Resource(name = "aiSseExecutor")
@@ -62,6 +70,57 @@ public class WritingController {
         private String subject;
         /** 语气要求（可选） */
         private String tone;
+    }
+
+    @Data
+    public static class SendReq {
+        private String type;
+        private String title;
+        private String content;
+        @JsonAlias("recipientUserIds")
+        private List<Long> recipientUserIds;
+        @JsonAlias("departmentId")
+        private Long departmentId;
+        private Boolean all;
+    }
+
+    /** 将已生成的写作内容投递到业务收件箱。 */
+    @PostMapping("/send")
+    public R<Map<String, Object>> send(@RequestBody SendReq req) {
+        long senderId = StpUtil.getLoginIdAsLong();
+        String type = req.getType() == null ? "" : req.getType().trim().toLowerCase();
+        String title = req.getTitle() == null ? "" : req.getTitle().trim();
+        String content = req.getContent() == null ? "" : req.getContent().trim();
+        if (!Set.of("weekly", "email", "notice").contains(type)) throw new BizException("不支持的发送类型");
+        if (title.isBlank() || content.isBlank()) throw new BizException("标题和正文不能为空");
+        if (title.length() > 200) throw new BizException("标题不能超过200个字符");
+
+        List<Long> recipients;
+        if ("weekly".equals(type)) {
+            recipients = activeUserIds();
+        } else if ("email".equals(type)) {
+            if (req.getRecipientUserIds() == null || req.getRecipientUserIds().isEmpty()) throw new BizException("邮件至少选择一名员工");
+            recipients = activeUserIds(req.getRecipientUserIds());
+            if (recipients.isEmpty()) throw new BizException("所选员工不存在或已停用");
+        } else if (Boolean.TRUE.equals(req.getAll())) {
+            recipients = activeUserIds();
+        } else if (req.getDepartmentId() != null) {
+            recipients = jdbc.queryForList("SELECT id FROM sys_user WHERE status = 1 AND deleted = 0 AND dept_id = ?", Long.class, req.getDepartmentId());
+            if (recipients.isEmpty()) throw new BizException("该部门暂无启用员工");
+        } else {
+            throw new BizException("通知公告请选择部门或全体人员");
+        }
+        int sent = inboxService.sendToUsers(senderId, "writer_" + type, title, content, recipients);
+        return R.ok(Map.of("sentCount", sent, "sourceType", "writer_" + type));
+    }
+
+    private List<Long> activeUserIds() {
+        return jdbc.queryForList("SELECT id FROM sys_user WHERE status = 1 AND deleted = 0", Long.class);
+    }
+
+    private List<Long> activeUserIds(List<Long> requested) {
+        String placeholders = String.join(",", requested.stream().map(id -> "?").toList());
+        return jdbc.queryForList("SELECT id FROM sys_user WHERE status = 1 AND deleted = 0 AND id IN (" + placeholders + ")", Long.class, requested.toArray());
     }
 
     /**

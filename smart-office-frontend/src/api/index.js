@@ -137,9 +137,8 @@ export const createUser = (form) => data(request.post('/admin/users', form))
 export const updateUser = (id, form) => data(request.put(`/admin/users/${id}`, form))
 export const deleteUser = (id) => data(request.delete(`/admin/users/${id}`))
 export const getRoles = () => data(request.get('/admin/roles'))
+export const getDepts = () => data(request.get('/admin/depts'))
 export const getLogs = (params) => data(request.get('/admin/logs', { params }))
-export const getKnowledgeEngine = () => data(request.get('/admin/knowledge-engine'))
-export const updateKnowledgeEngine = (engine) => data(request.put('/admin/knowledge-engine', { engine }))
 
 /* ==================== 会议模块 ==================== */
 export const createMeeting = form => data(request.post('/meetings', form))
@@ -149,12 +148,17 @@ export const deleteMeeting = id => data(request.delete(`/meetings/${id}`))
 export const generateMeetingSummary = (id, fileIds) => data(request.post(`/meetings/${id}/summary`, fileIds?.length ? { file_ids: fileIds } : {}))
 export const getMeetingSummary = id => data(request.get(`/meetings/${id}/summary`))
 export const getMeetingActions = id => data(request.get(`/meetings/${id}/actions`))
-/** 纪要文档直传 Dify（pdf/md/docx/txt），返回 { dify_file_id, file_name } */
-export const uploadMeetingFile = file => {
+/** 解析会议文档为纯文本，返回 { text, file_name, text_length } */
+export const extractMeetingFile = file => {
   const formData = new FormData()
   formData.append('file', file)
-  return data(request.post('/meetings/files', formData, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  return data(request.post('/meetings/files/extract', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
+  }))
 }
+// 兼容旧页面导入名：会议新建页已改为使用 extractMeetingFile
+export const uploadMeetingFile = extractMeetingFile
 export const pushMeetingToDingtalk = (id) => data(request.post(`/meetings/${id}/push`))
 
 export const transcribeAudio = file => {
@@ -170,11 +174,20 @@ export const getUnreadCount = () => data(request.get('/notifications/unread-coun
 export const markNotificationRead = (id) => data(request.put(`/notifications/${id}/read`))
 export const markAllNotificationsRead = () => data(request.put('/notifications/read-all'))
 
+/* ==================== 业务收件箱 ==================== */
+export const getInbox = (limit = 50) => data(request.get('/inbox', { params: { limit } }))
+export const getInboxUnreadCount = () => data(request.get('/inbox/unread-count'))
+export const markInboxRead = (id) => data(request.put(`/inbox/${id}/read`))
+export const markAllInboxRead = () => data(request.put('/inbox/read-all'))
+
 /* ==================== bash 安全管控 ==================== */
-export const execBashCommand = (command) => data(request.post('/security/bash-exec', { command }))
+export const getBashPresets = () => data(request.get('/security/presets'))
+export const executeBashPreset = (presetId) => data(request.post('/security/preset', { preset_id: presetId }))
+export const getBashAudit = (limit = 30) => data(request.get('/security/audit', { params: { limit } }))
 
 /* ==================== 用户选项（待办转任务选人） ==================== */
 export const getUserOptions = () => data(request.get('/users/options'))
+export const getUserDepartments = () => data(request.get('/users/departments'))
 
 /* ==================== 知识库 ==================== */
 export const uploadDocument = (file, category) => {
@@ -183,5 +196,12 @@ export const uploadDocument = (file, category) => {
 }
 export const getDocuments = () => data(request.get('/knowledge/documents'))
 export const deleteDocument = (id) => data(request.delete(`/knowledge/documents/${id}`))
-export const rebuildIndex = () => data(request.post('/knowledge/rebuild-index'))
+export const getKnowledgePermissionOptions = (id) => data(request.get(`/knowledge/documents/${id}/permission-options`))
+export const getDocumentPermissions = (id) => data(request.get(`/knowledge/documents/${id}/permissions`))
+export const replaceDocumentPermissions = (id, grants) => data(request.put(`/knowledge/documents/${id}/permissions`, grants))
+export const getDocument = (id) => data(request.get(`/knowledge/documents/${id}`))
+export const updateDocument = (id, form) => data(request.put(`/knowledge/documents/${id}`, form))
 export const searchKnowledge = (query) => data(request.post('/knowledge/search', { query }))
+// 本地文档问答：只检索当前用户有权限访问的平台上传文档（与上面的 Dify 模式并存）
+export const searchLocalKnowledge = (query) => data(request.post('/knowledge/search-local', { query }))
+export const getLocalKnowledgeMode = () => data(request.get('/knowledge/local-mode'))

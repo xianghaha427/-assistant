@@ -441,12 +441,12 @@ function formatDate(t) {
 .status-tag.pending .status-dot { background: var(--text-tertiary); }
 .status-tag.processing {
   color: var(--accent);
-  border-color: rgba(8, 180, 188, 0.3);
-  background: rgba(8, 180, 188, 0.08);
+  border-color: rgba(15, 91, 60, 0.28);
+  background: var(--accent-soft);
 }
 .status-tag.processing .status-dot {
   background: var(--accent);
-  box-shadow: 0 0 6px rgba(8, 180, 188, 0.9);
+  box-shadow: 0 0 0 3px rgba(15, 91, 60, 0.10);
   animation: breathe 1.8s ease-in-out infinite;
 }
 @keyframes breathe {
@@ -509,7 +509,7 @@ function formatDate(t) {
   background: var(--accent-soft);
   padding: 4px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(8, 180, 188, 0.2);
+  border: 1px solid var(--border-light);
 }
 
 .topic-list {
@@ -612,8 +612,8 @@ function formatDate(t) {
 }
 .action-status.in_progress {
   color: var(--accent);
-  border-color: rgba(8, 180, 188, 0.3);
-  background: rgba(8, 180, 188, 0.1);
+  border-color: rgba(15, 91, 60, 0.28);
+  background: var(--accent-soft);
 }
 .action-status.completed {
   color: #34D399;
@@ -637,10 +637,10 @@ function formatDate(t) {
 .assignee-tag {
   font-size: 11px;
   color: var(--accent);
-  background: rgba(8, 180, 188, 0.12);
+  background: var(--accent-soft);
   padding: 2px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(8, 180, 188, 0.25);
+  border: 1px solid rgba(15, 91, 60, 0.22);
 }
 .deadline-tag {
   font-size: 11px;
@@ -655,7 +655,7 @@ function formatDate(t) {
   font-size: 11px;
   color: var(--accent);
   background: var(--accent-soft);
-  border: 1px solid rgba(8, 180, 188, 0.25);
+  border: 1px solid rgba(15, 91, 60, 0.22);
   border-radius: 999px;
   padding: 2px 8px;
   cursor: pointer;

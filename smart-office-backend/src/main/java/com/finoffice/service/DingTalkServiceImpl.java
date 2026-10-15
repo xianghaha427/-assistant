@@ -6,6 +6,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
@@ -24,6 +27,7 @@ public class DingTalkServiceImpl implements DingTalkService {
 
     private final DingTalkConfig dingTalkConfig;
     private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public void sendText(String content) {
@@ -70,6 +74,9 @@ public class DingTalkServiceImpl implements DingTalkService {
 
     private void doPost(String json) {
         try {
+            if (dingTalkConfig.getWebhookUrl() == null || dingTalkConfig.getWebhookUrl().isBlank()) {
+                throw new IllegalStateException("钉钉 Webhook 未配置");
+            }
             String url = buildSignedUrl();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -79,11 +86,23 @@ public class DingTalkServiceImpl implements DingTalkService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 log.error("[DingTalk] HTTP error: status={}, body={}", response.statusCode(), response.body());
-            } else {
-                log.info("[DingTalk] send success: {}", response.body());
+                throw new IllegalStateException("钉钉接口 HTTP 请求失败：" + response.statusCode());
             }
+
+            JsonNode result = objectMapper.readTree(response.body());
+            int errorCode = result.path("errcode").asInt(0);
+            if (errorCode != 0) {
+                String errorMessage = result.path("errmsg").asText("未知错误");
+                log.error("[DingTalk] business error: errcode={}, errmsg={}", errorCode, errorMessage);
+                throw new IllegalStateException("钉钉发送失败：" + errorMessage + "（" + errorCode + "）");
+            }
+            log.info("[DingTalk] send success: {}", response.body());
         } catch (Exception e) {
             log.error("[DingTalk] send failed", e);
+            if (e instanceof IllegalStateException stateException) {
+                throw stateException;
+            }
+            throw new IllegalStateException("钉钉消息发送失败", e);
         }
     }
 

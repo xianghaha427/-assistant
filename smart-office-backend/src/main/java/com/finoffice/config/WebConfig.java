@@ -30,6 +30,10 @@ public class WebConfig implements WebMvcConfigurer {
                     if (uri.startsWith("/api/admin/")) {
                         StpUtil.checkRole("ADMIN");
                     }
+                    // 运维安全中心包含执行和审计能力，仅管理员可访问；AI 内部工具不经过该 HTTP 入口。
+                    if (uri.startsWith("/api/security/")) {
+                        StpUtil.checkRole("ADMIN");
+                    }
                     // 智能体写操作：仅 ADMIN（GET 保持登录即可）
                     if (uri.startsWith("/api/agents/")
                             && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {

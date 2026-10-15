@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 支持的工具（来自 AgentTools）：
  * - createTask: 创建任务
  * - createMeetingActionItem: 创建会议待办
- * - searchKnowledge: 知识库检索
+ * - diagnoseOfficeEnvironment: 固定办公环境诊断
  */
 @Slf4j
 @Service
@@ -74,6 +74,15 @@ public class ToolUseAgentService {
      * @return Agent 的回答和执行结果
      */
     public String execute(Long userId, String command) {
+        agentTools.setCurrentUserId(userId);
+        try {
+            return executeInternal(command);
+        } finally {
+            agentTools.clearCurrentUserId();
+        }
+    }
+
+    private String executeInternal(String command) {
         ChatModel model = modelProvider.getIfAvailable();
         if (model == null) {
             return "自研引擎未启用，Tool Use Agent 不可用。请在管理后台开启自研引擎。";
@@ -82,7 +91,7 @@ public class ToolUseAgentService {
         String systemPrompt = "你是恒生智能办公助手，可以与公司的任务系统、知识库交互。"
                 + "用户提出的操作需求，你需要调用相应的工具来完成。"
                 + "执行操作后，用简洁中文告知用户结果。"
-                + "如果用户只是咨询（而非操作），直接在知识库中搜索相关信息回答。";
+                + "如果用户只是咨询（而非操作），请提示用户使用知识问答功能。";
 
         // 最多 3 轮交互（用户指令 → 工具调用 → 结果返回 → LLM 最终回答）
         int maxRounds = 3;

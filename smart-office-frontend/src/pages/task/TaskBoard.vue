@@ -227,7 +227,7 @@ function isOverdue(t) {
 }
 .column-dot { width: 8px; height: 8px; border-radius: 50%; }
 .column-dot.pending { background: var(--text-tertiary); }
-.column-dot.in_progress { background: var(--accent); box-shadow: 0 0 6px rgba(8, 180, 188, 0.6); }
+.column-dot.in_progress { background: var(--accent); box-shadow: 0 0 0 3px rgba(15, 91, 60, 0.10); }
 .column-dot.done { background: #10B981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
 .column-name {
   font-size: 13.5px;
@@ -256,11 +256,7 @@ function isOverdue(t) {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.task-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
-.task-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
+.task-card:hover { border-color: var(--accent-light); background: var(--accent-tint); }
 
 .task-title {
   font-size: 13.5px;
@@ -300,7 +296,7 @@ function isOverdue(t) {
 }
 .priority-tag.medium {
   color: var(--accent);
-  border-color: rgba(8, 180, 188, 0.3);
+  border-color: rgba(15, 91, 60, 0.28);
   background: var(--accent-soft);
 }
 .priority-tag.low {
@@ -311,8 +307,8 @@ function isOverdue(t) {
 .source-tag {
   font-size: 11px;
   color: var(--accent);
-  background: rgba(8, 180, 188, 0.08);
-  border: 1px solid rgba(8, 180, 188, 0.25);
+  background: var(--accent-soft);
+  border: 1px solid rgba(15, 91, 60, 0.22);
   padding: 2px 8px;
   border-radius: 999px;
 }

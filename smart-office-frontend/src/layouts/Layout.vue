@@ -1,11 +1,11 @@
 <template>
   <el-container class="layout">
     <!-- ====== 侧边栏 ====== -->
-    <el-aside class="sidebar" :width="collapsed ? '68px' : '224px'">
+    <el-aside class="sidebar" :width="collapsed ? '68px' : '200px'">
       <div class="sidebar-logo" @click="$router.push('/')">
         <div class="logo-mark"><Building2 :size="20" /></div>
         <transition name="fade">
-          <div v-if="!collapsed" class="logo-text">恒生<span class="grad-text">智能办公助手</span></div>
+          <div v-if="!collapsed" class="logo-text">恒生智能办公助手</div>
         </transition>
       </div>
 
@@ -22,6 +22,7 @@
         <el-menu-item-group>
           <template #title><span class="group-label">工作概览</span></template>
           <el-menu-item index="/dashboard"><LayoutDashboard :size="18" /><template #title>工作台</template></el-menu-item>
+          <el-menu-item index="/inbox"><Inbox :size="18" /><template #title>收信箱</template></el-menu-item>
           <el-menu-item index="/board"><BarChart3 :size="18" /><template #title>数据看板</template></el-menu-item>
         </el-menu-item-group>
 
@@ -49,7 +50,7 @@
         <el-menu-item-group v-if="isAdmin">
           <template #title><span class="group-label">管理</span></template>
           <el-menu-item index="/system"><Settings :size="18" /><template #title>系统管理</template></el-menu-item>
-          <el-menu-item index="/security"><Shield :size="18" /><template #title>安全管控</template></el-menu-item>
+          <el-menu-item index="/security"><Shield :size="18" /><template #title>安全运营中心</template></el-menu-item>
         </el-menu-item-group>
       </el-menu>
 
@@ -117,11 +118,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMe, logout, getNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead } from '../api'
-import { Building2, LayoutDashboard, BarChart3, Calendar, Columns3, Library, FileText, Mail, Bell, Presentation, TrendingUp, Newspaper, Settings, Shield, ChevronDown, PanelLeft, PanelRight } from 'lucide-vue-next'
+import { Building2, LayoutDashboard, Inbox, BarChart3, Calendar, Columns3, Library, FileText, Mail, Bell, Presentation, TrendingUp, Newspaper, Settings, Shield, ChevronDown, PanelLeft, PanelRight } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -138,9 +139,14 @@ const localRoles = (() => {
 })()
 const isAdmin = localRoles.includes('ADMIN')
 
+const syncSidebar = () => { collapsed.value = window.innerWidth < 980 }
+
 onMounted(async () => {
+  syncSidebar()
+  window.addEventListener('resize', syncSidebar)
   try { userInfo.value = await getMe(); loadUnreadCount() } catch (e) { /* ignore */ }
 })
+onBeforeUnmount(() => window.removeEventListener('resize', syncSidebar))
 
 const notifications = ref([])
 const unreadCount = ref(0)
@@ -171,12 +177,12 @@ async function handleCommand(cmd) {
 .sidebar { display: flex; flex-direction: column; background: var(--sidebar-bg); border-right: 1px solid var(--border); transition: width 0.22s ease; overflow: hidden; }
 .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; cursor: pointer; white-space: nowrap; }
 .logo-mark { width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; }
-.logo-text { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); white-space: nowrap; }
+.logo-text { font-size: 16px; font-weight: 650; letter-spacing: -0.02em; color: var(--text-primary); white-space: nowrap; }
 .sidebar-menu { flex: 1; border-right: none !important; padding: 4px 8px; overflow-y: auto; }
 .sidebar-menu :deep(.el-menu-item-group__title) { padding: 14px 12px 6px; height: auto; line-height: 1.4; }
 .group-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--text-tertiary); text-transform: uppercase; }
 .sidebar-menu.el-menu--collapse :deep(.el-menu-item-group__title) { display: none; }
-.sidebar-menu .el-menu-item { border-radius: 8px; margin-bottom: 2px; height: 40px; line-height: 40px; transition: background 0.15s; display: flex; align-items: center; gap: 8px; }
+.sidebar-menu .el-menu-item { border-radius: 6px; margin-bottom: 2px; height: 40px; line-height: 40px; transition: background 0.15s, color 0.15s; display: flex; align-items: center; gap: 8px; position: relative; }
 .sidebar-menu .el-menu-item:hover { background: var(--surface-hover); }
 .sidebar-menu .el-menu-item.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .sidebar-menu .el-menu-item.is-active::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 16px; border-radius: 2px; background: var(--accent); }
@@ -193,7 +199,7 @@ async function handleCommand(cmd) {
 :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) { color: var(--text-primary) !important; font-weight: 500; }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 
-.user-chip { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 24px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; }
+.user-chip { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
 .user-chip:hover { background: var(--surface-hover); border-color: var(--border-strong); }
 .user-avatar { background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; }
 .user-name { font-size: 13px; color: var(--text-primary); font-weight: 500; }

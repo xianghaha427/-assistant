@@ -2,20 +2,8 @@
   <div class="admin-page">
     <div class="admin-header">
       <div>
-        <h2 class="page-title">系统<span class="grad-text">管理</span></h2>
+        <h2 class="page-title">系统管理</h2>
         <div class="page-subtitle">用户管理、角色配置与操作日志审计</div>
-      </div>
-      <div class="engine-switch">
-        <span class="engine-label">知识库回答引擎</span>
-        <el-select
-          v-model="knowledgeEngine"
-          :loading="engineLoading"
-          style="width: 220px"
-          @change="handleKnowledgeEngineChange"
-        >
-          <el-option label="Dify Agent 回答" value="dify" />
-          <el-option label="自研 Agent 回答" value="native" />
-        </el-select>
       </div>
     </div>
 
@@ -97,8 +85,7 @@
       <!-- 操作日志 -->
       <el-tab-pane label="操作日志" name="logs">
         <div class="tab-toolbar">
-          <div class="text-muted">审计平台关键操作与知识库引擎切换记录</div>
-          <el-button text :loading="engineLoading" @click="loadKnowledgeEngine">刷新引擎状态</el-button>
+          <div class="text-muted">审计平台关键操作记录</div>
         </div>
         <el-table :data="logs" v-loading="logsLoading" stripe class="admin-table">
           <el-table-column prop="createTime" label="时间" width="180">
@@ -151,14 +138,21 @@
           <el-input v-model="userForm.real_name" placeholder="请输入姓名" />
         </el-form-item>
         <el-form-item label="部门">
-          <el-input v-model="userForm.dept_id" placeholder="部门 ID（可选）" />
+          <el-select v-model="userForm.dept_id" placeholder="请选择部门" clearable filterable style="width: 100%">
+            <el-option
+              v-for="dept in depts"
+              :key="dept.id"
+              :label="dept.dept_name"
+              :value="dept.id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="userForm.role_codes" multiple placeholder="请选择角色" style="width: 100%">
             <el-option
               v-for="role in roles"
               :key="role.role_code"
-              :label="roleLabel(role.role_code)"
+              :label="role.role_name || roleLabel(role.role_code)"
               :value="role.role_code"
             />
           </el-select>
@@ -188,9 +182,8 @@ import {
   updateUser,
   deleteUser,
   getRoles,
-  getLogs,
-  getKnowledgeEngine,
-  updateKnowledgeEngine
+  getDepts,
+  getLogs
 } from '../api'
 
 const activeTab = ref('users')
@@ -211,13 +204,14 @@ const userForm = reactive({
   username: '',
   password: '',
   real_name: '',
-  dept_id: '',
+  dept_id: null,
   role_codes: [],
   status: 1
 })
 
 // 角色（供用户管理里分配角色的下拉框使用）
 const roles = ref([])
+const depts = ref([])
 
 // 操作日志
 const logs = ref([])
@@ -225,8 +219,6 @@ const logsLoading = ref(false)
 const logPage = ref(1)
 const logPageSize = ref(20)
 const logTotal = ref(0)
-const knowledgeEngine = ref('dify')
-const engineLoading = ref(false)
 
 const ROLE_MAP = {
   ADMIN: '管理员',
@@ -243,15 +235,14 @@ function formatTime(t) {
 
 onMounted(() => {
   loadRoles()
+  loadDepts()
   loadUsers()
-  loadKnowledgeEngine()
 })
 
 watch(activeTab, (tab) => {
   if (tab === 'users') loadUsers()
   else if (tab === 'logs') {
     loadLogs()
-    loadKnowledgeEngine()
   }
 })
 
@@ -280,6 +271,16 @@ async function loadRoles() {
   }
 }
 
+async function loadDepts() {
+  try {
+    const list = await getDepts()
+    depts.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.error('加载部门列表失败:', e)
+    depts.value = []
+  }
+}
+
 async function loadLogs() {
   logsLoading.value = true
   try {
@@ -294,29 +295,6 @@ async function loadLogs() {
   }
 }
 
-async function loadKnowledgeEngine() {
-  engineLoading.value = true
-  try {
-    const data = await getKnowledgeEngine()
-    knowledgeEngine.value = data.engine || 'dify'
-  } finally {
-    engineLoading.value = false
-  }
-}
-
-async function handleKnowledgeEngineChange(engine) {
-  engineLoading.value = true
-  try {
-    await updateKnowledgeEngine(engine)
-    ElMessage.success(engine === 'native' ? '已切换为自研 Agent 回答' : '已切换为 Dify Agent 回答')
-    await loadLogs()
-  } catch (e) {
-    await loadKnowledgeEngine()
-  } finally {
-    engineLoading.value = false
-  }
-}
-
 function openCreateUser() {
   isEditUser.value = false
   editingUserId.value = null
@@ -324,7 +302,7 @@ function openCreateUser() {
     username: '',
     password: '',
     real_name: '',
-    dept_id: '',
+    dept_id: null,
     role_codes: [],
     status: 1
   })
@@ -336,7 +314,7 @@ function openEditUser(row) {
   editingUserId.value = row.id
   Object.assign(userForm, {
     real_name: row.real_name || '',
-    dept_id: row.dept_id || '',
+    dept_id: row.dept_id || null,
     role_codes: row.roles || [],
     status: row.status
   })
@@ -359,7 +337,7 @@ async function handleSaveUser() {
     if (isEditUser.value) {
       await updateUser(editingUserId.value, {
         real_name: userForm.real_name,
-        dept_id: userForm.dept_id ? Number(userForm.dept_id) : null,
+        dept_id: userForm.dept_id || null,
         role_codes: userForm.role_codes,
         status: userForm.status
       })
@@ -369,7 +347,7 @@ async function handleSaveUser() {
         username: userForm.username,
         password: userForm.password,
         real_name: userForm.real_name,
-        dept_id: userForm.dept_id ? Number(userForm.dept_id) : null,
+        dept_id: userForm.dept_id || null,
         role_codes: userForm.role_codes
       })
       ElMessage.success('创建成功')
@@ -403,19 +381,6 @@ async function handleDeleteUser(row) {
   gap: 16px;
 }
 
-.engine-switch {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.engine-label {
-  color: var(--text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
 .admin-tabs {
   margin-top: 8px;
 }
@@ -439,7 +404,7 @@ async function handleDeleteUser(row) {
 }
 
 .admin-tabs :deep(.el-tabs__active-bar) {
-  background: var(--grad-brand);
+  background: var(--accent);
 }
 
 .tab-toolbar {
@@ -456,7 +421,7 @@ async function handleDeleteUser(row) {
 }
 
 .admin-table :deep(.el-table__header th) {
-  background: var(--surface-solid);
+  background: var(--surface-hover);
   color: var(--text-secondary);
   font-weight: 500;
   font-size: 13px;

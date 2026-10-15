@@ -79,6 +79,13 @@ public class AdminController {
         return R.ok(adminService.listRoles());
     }
 
+    /** 部门列表 */
+    @GetMapping("/depts")
+    public R<?> listDepts() {
+        adminService.checkAdmin();
+        return R.ok(adminService.listDepts());
+    }
+
     /** 操作日志（分页） */
     @GetMapping("/logs")
     public R<Map<String, Object>> listLogs(
@@ -88,23 +95,4 @@ public class AdminController {
         return R.ok(adminService.listLogs(page, size));
     }
 
-    /** 当前知识库回答引擎 */
-    @GetMapping("/knowledge-engine")
-    public R<Map<String, Object>> getKnowledgeEngine() {
-        adminService.checkAdmin();
-        return R.ok(adminService.getKnowledgeEngine());
-    }
-
-    @Data
-    public static class KnowledgeEngineReq {
-        private String engine;
-    }
-
-    /** 切换知识库回答引擎：dify / native */
-    @PutMapping("/knowledge-engine")
-    public R<Void> updateKnowledgeEngine(@RequestBody KnowledgeEngineReq req) {
-        adminService.checkAdmin();
-        adminService.updateKnowledgeEngine(req.getEngine());
-        return R.ok();
-    }
 }

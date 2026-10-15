@@ -148,32 +148,15 @@ function formatTime(t) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 34px 38px;
+  padding: 24px 28px;
   overflow: hidden;
   margin-bottom: 24px;
+  position: relative;
+  border: 1px solid #CFE4D5;
+  border-radius: var(--radius-lg);
+  background: #F0F8F2;
 }
-.hero-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(64px);
-  pointer-events: none;
-}
-.hero-orb-1 {
-  width: 300px; height: 220px;
-  background: rgba(8, 180, 188, 0.22);
-  top: -80px; right: 10%;
-  animation: drift 14s ease-in-out infinite alternate;
-}
-.hero-orb-2 {
-  width: 220px; height: 180px;
-  background: rgba(4, 126, 133, 0.16);
-  bottom: -70px; left: 22%;
-  animation: drift 18s ease-in-out infinite alternate-reverse;
-}
-@keyframes drift {
-  from { transform: translate(0, 0); }
-  to   { transform: translate(40px, 18px); }
-}
+.hero::after { content: ""; position: absolute; right: -58px; top: -100px; width: 250px; height: 250px; border: 1px solid rgba(15, 91, 60, .12); border-radius: 50%; box-shadow: 0 0 0 24px rgba(15, 91, 60, .035), 0 0 0 48px rgba(15, 91, 60, .02); pointer-events: none; }
 .hero-grid {
   position: absolute;
   inset: 0;
@@ -211,19 +194,18 @@ function formatTime(t) {
   border: none;
 }
 .hero-btn.primary {
-  background: var(--grad-brand);
+  background: var(--accent);
   color: #fff;
-  box-shadow: var(--glow-brand);
 }
-.hero-btn.primary:hover { filter: brightness(1.14); transform: translateY(-1px); }
+.hero-btn.primary:hover { background: var(--accent-deep); }
 .btn-icon { font-size: 14px; }
 
 .hero-stats {
   display: flex; align-items: center; gap: 26px;
   position: relative; z-index: 1;
   padding: 18px 26px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  background: var(--accent-tint);
   border: 1px solid var(--border-light);
 }
 .hero-stat { text-align: center; }
@@ -241,13 +223,11 @@ function formatTime(t) {
 .meeting-card {
   padding: 24px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
+  transition: background .18s ease, border-color .18s ease;
 }
 .meeting-card:hover {
-  transform: translateY(-2px);
   border-color: var(--accent-light);
-  box-shadow: var(--shadow-md);
+  background: var(--accent-tint);
 }
 
 .card-top {
@@ -310,12 +290,12 @@ function formatTime(t) {
 
 .status-tag.processing {
   color: var(--accent);
-  border-color: rgba(8, 180, 188, 0.3);
-  background: rgba(8, 180, 188, 0.08);
+  border-color: rgba(15, 91, 60, 0.28);
+  background: var(--accent-soft);
 }
 .status-tag.processing .status-dot {
   background: var(--accent);
-  box-shadow: 0 0 6px rgba(8, 180, 188, 0.9);
+  box-shadow: 0 0 0 3px rgba(15, 91, 60, 0.10);
   animation: breathe 1.8s ease-in-out infinite;
 }
 @keyframes breathe {
@@ -357,8 +337,9 @@ function formatTime(t) {
   display: flex; align-items: center; justify-content: center;
   font-size: 30px;
   color: #fff;
-  background: var(--grad-brand);
-  box-shadow: var(--glow-brand);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-light);
+  color: var(--accent);
   margin-bottom: 18px;
 }
 .empty-title {
@@ -378,7 +359,7 @@ function formatTime(t) {
 .skeleton-line {
   height: 14px;
   border-radius: 6px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background: linear-gradient(90deg, var(--surface-hover) 25%, var(--border-light) 50%, var(--surface-hover) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   margin-bottom: 12px;

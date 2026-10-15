@@ -48,37 +48,42 @@ sa-token:
   is-read-header: true
   token-prefix: Bearer
 
-# Dify 云端配置（密钥存于数据库 agent_config.dify_app_id，不落代码文件）
+# Dify 云端配置（密钥由本机环境变量注入数据库，不写入代码仓库）
 dify:
   enabled: true
-  base-url: https://api.dify.ai/v1
-  api-key: ""
+  base-url: ${DIFY_BASE_URL:https://api.dify.ai}
+  app-keys:
+    knowledge: ${DIFY_KB_API_KEY:}
+    meeting: ${DIFY_MEETING_API_KEY:}
+    insight: ${DIFY_INSIGHT_API_KEY:}
+    ppt: ${DIFY_PPT_API_KEY:}
+    writer: ${DIFY_WRITER_API_KEY:}
 
 # 文件上传目录
 app:
   upload-path: ./uploads
 
 dingtalk:
-  enabled: true
-  webhook-url: "https://oapi.dingtalk.com/robot/send?access_token=b0900c627ca57bc491dd435598e50a3310a9dd09802fa382b097b6aa4a3aed81"
-  secret: ""
+  enabled: ${DINGTALK_ENABLED:false}
+  webhook-url: ${DINGTALK_WEBHOOK_URL:}
+  secret: ${DINGTALK_SECRET:}
 
-# ---- 阶段1：FinPilot 自研知识引擎开关（LangChain4j 双通道）----
-# enabled=true 装配自研引擎 Bean；知识问答是否走自研由 agent_config#1 engine 列决定，
-# 自研异常时自动回落 Dify 链路。
 finpilot:
-  engine:
-    enabled: true
+  # ---- 工具调用编排模型（OpenAI 兼容端点，供 POST /api/ai/agent-exec 使用）----
+  # 端点由 FINPILOT_MODEL_BASE_URL / _API_KEY / _NAME 环境变量提供。
+  # base-url 刻意不在此声明：未配置时 LangChain4jConfig 整体不装配，工具编排降级关闭。
+  model:
     timeout-seconds: 120
-  # ---- 阶段2：自建 RAG 检索引擎（Ollama Embedding + 内存向量索引）----
-  # 知识问答 engine=native 时优先走自研 RAG（检索+生成），Ollama 不可用时自动退化为纯 LLM 模式。
-  rag:
-    ollama-base-url: http://localhost:11434
-    embedding-model: nomic-embed-text   # Ollama 拉取: ollama pull nomic-embed-text
-    local-model: qwen2.5:latest         # 本地安全通道模型
-    docs-path: ../knowledge-docs        # 知识库文档目录（相对于 smart-office-backend 工作目录）
-    top-k: 4                            # 检索返回片段数
-  # ---- 阶段3：语音转写（Faster-Whisper Python 微服务）----
+  # ---- 本地知识文档检索模型（POST /api/knowledge/search-local）----
+  # 与上面的 model 完全独立：那条线供工具调用编排（@Tool）使用，这条线只做
+  # 「按权限取本地文档 → 交给长上下文模型作答」，两条线互不感知。
+  # base-url / api-key 与上面同理，刻意不在本文件声明：为空即本地模式整体关闭，
+  # 前端「本地文档」开关置灰，Dify 路径不受任何影响。
+  kb-model:
+    model-name: ${FINPILOT_KB_MODEL_NAME:deepseek-chat}
+    max-context-chars: ${FINPILOT_KB_MODEL_MAX_CONTEXT_CHARS:30000}
+    timeout-seconds: 60
+  # ---- 语音转写（Faster-Whisper Python 微服务）----
   whisper:
     enabled: true                       # 未启动微服务时关闭
     base-url: http://localhost:8766

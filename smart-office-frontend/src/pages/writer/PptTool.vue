@@ -207,8 +207,7 @@ onBeforeUnmount(stopProgress)
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  background: var(--grad-brand);
-  box-shadow: var(--glow-brand);
+  background: var(--accent);
 }
 .file-info { flex: 1; min-width: 0; }
 .file-title {

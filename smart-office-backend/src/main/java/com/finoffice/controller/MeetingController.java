@@ -102,6 +102,14 @@ public class MeetingController {
         return R.ok(meetingService.uploadMeetingFile(file, userId));
     }
 
+    /** 提取会议文档纯文本，供前端填入文本输入框后交给会议纪要 Agent */
+    @PostMapping("/files/extract")
+    public R<Map<String, Object>> extractFile(@RequestParam("file") MultipartFile file) {
+        long userId = StpUtil.getLoginIdAsLong();
+        OpLogger.log(userId, "MEETING", "解析会议文档", file.getOriginalFilename());
+        return R.ok(meetingService.extractMeetingFile(file));
+    }
+
     /** 推送会议纪要到钉钉 */
     @PostMapping("/{id}/push")
     public R<Void> pushToDingTalk(@PathVariable Long id) {

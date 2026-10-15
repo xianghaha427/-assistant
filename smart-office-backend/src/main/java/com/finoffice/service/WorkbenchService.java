@@ -56,6 +56,7 @@ public class WorkbenchService {
     private final BriefingRecordMapper briefingMapper;
     private final TaskMapper taskMapper;
     private final DataScopeHelper dataScopeHelper;
+    private final InboxService inboxService;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
@@ -74,6 +75,10 @@ public class WorkbenchService {
                 async(this::todayBriefing, null);
         CompletableFuture<Map<String, Object>> statsF =
                 async(() -> stats(scope), defaultStats());
+        CompletableFuture<List<Map<String, Object>>> inboxF =
+                async(() -> inboxService.list(scope.userId(), 5), Collections.emptyList());
+        CompletableFuture<Integer> inboxUnreadF =
+                async(() -> inboxService.unreadCount(scope.userId()), 0);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("today_meetings", meetingsF.join());
@@ -81,6 +86,8 @@ public class WorkbenchService {
         // 今日简报：查 briefing_record 今日记录，无则 null（{title, content 摘要前200字, brief_date}）
         data.put("today_briefing", briefingF.join());
         data.put("stats", statsF.join());
+        data.put("inbox_messages", inboxF.join());
+        data.put("inbox_unread_count", inboxUnreadF.join());
         return data;
     }
 

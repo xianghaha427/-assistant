@@ -8,6 +8,20 @@ smart-office-frontend/node_modules/
 smart-office-frontend/dist/
 smart-office-frontend/test-results/
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Model / data artifacts
+*.pt
+*.bin
+*.onnx
+*.h5
+*.log
+
 # IDE
 .idea/
 *.iml
@@ -24,3 +38,22 @@ smart-office-backend/logs/
 
 # Local deployment secrets
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.jks
+
+# Local-only leak note (was committed once, deleted later — keep it out for good)
+DIFY-FIX.md
+
+# 本地文档：只留本机，不进仓库
+部署指南.md
+项目讲解.md
+答辩演示脚本-*.md
+录屏*.md
+录屏*.txt
+新建 文本文档.txt
+参赛材料/
+【A21】*.pdf

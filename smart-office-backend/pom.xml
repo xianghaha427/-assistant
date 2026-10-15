@@ -21,13 +21,13 @@
         <java.version>17</java.version>
         <sa-token.version>1.37.0</sa-token.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
-        <!-- LangChain4j 正式 GA 版本（阶段1自研知识引擎，勿用 beta） -->
+        <!-- LangChain4j 版本由 BOM 统一管理，用于可选的工具调用编排 -->
         <langchain4j.version>1.13.0</langchain4j.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- LangChain4j BOM：阶段1自研知识引擎模块统一版本管理 -->
+            <!-- LangChain4j BOM：工具调用模块统一版本管理 -->
             <dependency>
                 <groupId>dev.langchain4j</groupId>
                 <artifactId>langchain4j-bom</artifactId>
@@ -95,20 +95,16 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- LangChain4j：自研知识问答引擎（OpenAI 兼容协议连接本地 Ollama） -->
+        <!-- LangChain4j：工具调用编排（ToolUseAgentService 用 @Tool 注解 + ChatRequest 驱动） -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
         </dependency>
+        <!-- OpenAI 兼容协议客户端：为工具编排提供 ChatModel Bean。
+             端点由 FINPILOT_MODEL_* 环境变量提供，未配置时该 Bean 不装配 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
         </dependency>
     </dependencies>
 

@@ -17,7 +17,7 @@
     <div class="chat-area">
       <div v-if="messages.length === 0" class="welcome">
         <div class="welcome-logo"><TrendingUp :size="32" /></div>
-        <h2 class="welcome-title">你好，我是<span class="grad-text">恒生智能办公助手</span></h2>
+        <h2 class="welcome-title">你好，我是恒生智能办公助手</h2>
         <p class="welcome-sub">金融企业智能办公伙伴，随时为你解答、起草、分析</p>
         <div class="quick-questions">
           <div v-for="(q, i) in quickQuestions" :key="i" class="quick-q" @click="sendMessage(q)">{{ q }}</div>
@@ -125,7 +125,7 @@ function renderMd(text) { const escaped = String(text || '').replace(/&/g, '&amp
 
 /* ====== ECharts (unchanged logic) ====== */
 const chartInitMap = new Map(); const chartObserverMap = new Map()
-const LEGACY_COLOR_MAP = { '#4d8dff': '#6FAF7B', '#8b5cf6': '#4E9A5F', '#7c5cfc': '#4E9A5F', '#a78bfa': '#81C995', '#22d3ee': '#81C995', '#0fb5ce': '#6FAF7B', '#6366f1': '#4E9A5F', '#818cf8': '#81C995', '#67e8f9': '#A5D5AF' }
+const LEGACY_COLOR_MAP = { '#4d8dff': '#0F5B3C', '#8b5cf6': '#0A432D', '#7c5cfc': '#0A432D', '#a78bfa': '#3C8565', '#22d3ee': '#3C8565', '#0fb5ce': '#0F5B3C', '#6366f1': '#0A432D', '#818cf8': '#3C8565', '#67e8f9': '#7BAF96' }
 function normalizeOption(opt) { try { let s = JSON.stringify(opt); for (const [o, n] of Object.entries(LEGACY_COLOR_MAP)) s = s.replace(new RegExp(o, 'gi'), n); return JSON.parse(s) } catch (e) { return opt } }
 function splitSegments(content, streaming) {
   const segs = []; const text = String(content || ''); const re = /```echarts\s*\n?([\s\S]*?)```/g; let last = 0, m

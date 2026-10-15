@@ -6,6 +6,8 @@ import com.finoffice.common.R;
 import com.finoffice.entity.SysUser;
 import com.finoffice.mapper.SysRoleMapper;
 import com.finoffice.mapper.SysUserMapper;
+import com.finoffice.mapper.SysDeptMapper;
+import com.finoffice.entity.SysDept;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,6 +27,7 @@ public class UserOptionController {
 
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
+    private final SysDeptMapper deptMapper;
 
     /** 用户选项：id / real_name / username / roles（仅启用且未删除的用户） */
     @GetMapping("/options")
@@ -43,5 +46,13 @@ public class UserOptionController {
             return map;
         }).toList();
         return R.ok(result);
+    }
+
+    @GetMapping("/departments")
+    public R<List<Map<String, Object>>> departments() {
+        StpUtil.checkLogin();
+        return R.ok(deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
+                        .eq(SysDept::getDeleted, 0).orderByAsc(SysDept::getId))
+                .stream().map(d -> Map.<String, Object>of("id", d.getId(), "name", d.getDeptName())).toList());
     }
 }

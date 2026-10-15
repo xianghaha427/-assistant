@@ -1,9 +1,11 @@
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useWriter } from '../../composables/useWriter'
+import { sendWriterMessage } from '../../api/writer'
 
 const { result, loading, source, sourceLabels, generate, copyResult } = useWriter('weekly')
+const sending = ref(false)
 
 const form = reactive({
   points: '',
@@ -17,6 +19,15 @@ function submit() {
     return
   }
   generate({ ...form })
+}
+
+async function sendWeekly() {
+  sending.value = true
+  try {
+    await sendWriterMessage({ type: 'weekly', title: '智能周报', content: result.value })
+    ElMessage.success('周报已发送给全体人员')
+  } catch (e) { ElMessage.error(e.message || '周报发送失败') }
+  finally { sending.value = false }
 }
 </script>
 
@@ -68,6 +79,7 @@ function submit() {
             <el-tag v-if="source" size="small" effect="plain">{{ sourceLabels[source] || source }}</el-tag>
             <el-tag v-if="loading" size="small" type="info" effect="plain">流式生成中…</el-tag>
             <el-button size="small" :disabled="!result || loading" @click="copyResult">复制</el-button>
+            <el-button size="small" type="primary" :loading="sending" :disabled="!result || loading" @click="sendWeekly">发送全体人员</el-button>
           </div>
         </div>
         <pre v-if="result" class="result-text">{{ result }}<span v-if="loading" class="caret"></span></pre>

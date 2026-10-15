@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,17 @@ import org.springframework.stereotype.Component;
 public class SchemaMigrationRunner implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
+
+    @Value("${dify.app-keys.knowledge:}")
+    private String difyKnowledgeKey;
+    @Value("${dify.app-keys.meeting:}")
+    private String difyMeetingKey;
+    @Value("${dify.app-keys.insight:}")
+    private String difyInsightKey;
+    @Value("${dify.app-keys.ppt:}")
+    private String difyPptKey;
+    @Value("${dify.app-keys.writer:}")
+    private String difyWriterKey;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -57,6 +69,14 @@ public class SchemaMigrationRunner implements ApplicationRunner {
             jdbcTemplate.update("UPDATE sys_user SET real_name = '张三' WHERE id = 2");
             jdbcTemplate.update("UPDATE sys_user SET real_name = '李四' WHERE id = 3");
 
+            // 历史版本通过错误的连接编码写入了部分种子用户姓名；使用 Unicode 转义修复，避免源码/终端编码再次污染数据。
+            repairSeedUserName("wangwu", "\u738b\u4e94");
+            repairSeedUserName("liqiang", "\u674e\u5f3a");
+            repairSeedUserName("chenchen", "\u9648\u6668");
+            repairSeedUserName("zhaomin", "\u8d75\u654f");
+            repairSeedUserName("zhouzheng", "\u5468\u6b63");
+            jdbcTemplate.update("UPDATE sys_dept SET dept_name = ? WHERE id = 5", "\u4fe1\u606f\u79d1\u6280\u90e8");
+
             jdbcTemplate.update("UPDATE sys_role SET role_name = '系统管理员' WHERE id = 1");
             jdbcTemplate.update("UPDATE sys_role SET role_name = '部门负责人' WHERE id = 2");
             jdbcTemplate.update("UPDATE sys_role SET role_name = '普通员工' WHERE id = 3");
@@ -70,22 +90,26 @@ public class SchemaMigrationRunner implements ApplicationRunner {
                     + "description = '金融行业动态分析、政策解读与市场趋势洞察，支持图表可视化', icon = 'trend' WHERE id = 3");
             jdbcTemplate.update("UPDATE agent_config SET name = 'PPT大纲生成助手', "
                     + "description = '输入主题一键生成结构化PPT内容（大纲/每页要点/演讲备注/布局建议）', icon = 'ppt' WHERE id = 4");
-            jdbcTemplate.update("UPDATE agent_config SET dify_app_id = 'app-REVOKED', "
-                    + "dify_mode = 'workflow', input_variable = 'topic' WHERE id = 4");
+            jdbcTemplate.update("UPDATE agent_config SET dify_mode = 'workflow', input_variable = 'topic' WHERE id = 4");
+            setDifyKeyIfConfigured(1, difyKnowledgeKey);
+            setDifyKeyIfConfigured(2, difyMeetingKey);
+            setDifyKeyIfConfigured(3, difyInsightKey);
+            setDifyKeyIfConfigured(4, difyPptKey);
 
             // 补插办公写作助手（id=5，INSERT IGNORE 幂等）
             jdbcTemplate.update("INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, enabled) "
                     + "VALUES (5, '办公写作助手', '公文、汇报、邮件、总结等办公文案的智能撰写与润色', 'document', '', 'chat', 1)");
+            setDifyKeyIfConfigured(5, difyWriterKey);
 
             // ---- 业务种子用户（会议待办转任务选人依赖，幂等：按 username 先查后插）----
             // 新增部门：信息科技部（id=5）
             jdbcTemplate.update("INSERT IGNORE INTO sys_dept (id, dept_name, parent_id) VALUES (5, '信息科技部', 0)");
             // 新增用户：王五/李强/陈晨（普通员工）、赵敏/周正（部门负责人），初始密码均 123456
-            insertUserIfAbsent("wangwu", "王五", 2L, "EMPLOYEE");
-            insertUserIfAbsent("liqiang", "李强", 2L, "EMPLOYEE");
-            insertUserIfAbsent("chenchen", "陈晨", 3L, "EMPLOYEE");
-            insertUserIfAbsent("zhaomin", "赵敏", 3L, "DEPT_MANAGER");
-            insertUserIfAbsent("zhouzheng", "周正", 5L, "DEPT_MANAGER");
+            insertUserIfAbsent("wangwu", "\u738b\u4e94", 2L, "EMPLOYEE");
+            insertUserIfAbsent("liqiang", "\u674e\u5f3a", 2L, "EMPLOYEE");
+            insertUserIfAbsent("chenchen", "\u9648\u6668", 3L, "EMPLOYEE");
+            insertUserIfAbsent("zhaomin", "\u8d75\u654f", 3L, "DEPT_MANAGER");
+            insertUserIfAbsent("zhouzheng", "\u5468\u6b63", 5L, "DEPT_MANAGER");
 
             // 阶段3：会议-任务闭环 —— task 表建表（幂等）
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS task ("
@@ -142,28 +166,6 @@ public class SchemaMigrationRunner implements ApplicationRunner {
                     + "UNIQUE KEY uk_date (brief_date)"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='行业简报记录'");
 
-            // ---- 阶段1：自研知识问答双通道（幂等）----
-            // agent_config 增加 engine 列（native=自研引擎 / dify=Dify，默认 dify）
-            addColumnIfMissing("agent_config", "engine",
-                    "ALTER TABLE agent_config ADD COLUMN engine VARCHAR(16) NOT NULL DEFAULT 'dify' "
-                            + "COMMENT '知识问答引擎通道:native自研/dify云端'");
-            // 仅为空时默认走 Dify；管理员在后台切换为 native 后，重启不覆盖。
-            jdbcTemplate.update("UPDATE agent_config SET engine = 'dify' WHERE id = 1 "
-                    + "AND (engine IS NULL OR engine = '')");
-            // 知识问答助手(id=1) system_prompt 为空时回填自研引擎默认提示词（仅 NULL/空串时写入，幂等）
-            jdbcTemplate.update("UPDATE agent_config SET system_prompt = ? WHERE id = 1 "
-                    + "AND (system_prompt IS NULL OR system_prompt = '')",
-                    "你是华信证券的企业知识问答助手。请严格基于给定的上下文资料回答问题："
-                            + "资料中有明确依据时，给出简洁、专业、结构化的中文回答；"
-                            + "资料中没有依据或无法确定时，坦承说明知识库中暂无相关内容，不要编造。");
-
-            // ---- 阶段2：自建 RAG 引擎升级（幂等）----
-            addColumnIfMissing("agent_config", "model_channel",
-                    "ALTER TABLE agent_config ADD COLUMN model_channel VARCHAR(16) NOT NULL DEFAULT 'local' "
-                            + "COMMENT '模型通道:local本地Ollama安全通道'");
-            jdbcTemplate.update("UPDATE agent_config SET model_channel = 'local' WHERE model_channel IS NULL "
-                    + "OR model_channel = '' OR model_channel <> 'local'");
-
             // ---- 阶段3：通知中心 & 安全模块（幂等）----
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS sys_notification ("
                     + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
@@ -177,10 +179,43 @@ public class SchemaMigrationRunner implements ApplicationRunner {
                     + "INDEX idx_user_read (user_id, is_read)"
                     + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内通知'");
 
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS inbox_message ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                    + "recipient_user_id BIGINT NOT NULL COMMENT '收件人',"
+                    + "sender_user_id BIGINT NOT NULL COMMENT '发件人',"
+                    + "source_type VARCHAR(32) NOT NULL COMMENT 'writer_weekly/writer_email/writer_notice',"
+                    + "title VARCHAR(200) NOT NULL,"
+                    + "content MEDIUMTEXT NOT NULL,"
+                    + "is_read TINYINT NOT NULL DEFAULT 0,"
+                    + "create_time DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                    + "INDEX idx_inbox_recipient (recipient_user_id, is_read, create_time)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='业务收件箱'");
+
             // ---- 阶段3：知识库分类标签（幂等）----
             addColumnIfMissing("kb_document", "category",
                     "ALTER TABLE kb_document ADD COLUMN category VARCHAR(50) DEFAULT '未分类' "
                             + "COMMENT '文档分类（制度/流程/FAQ/项目等）'");
+
+            // ---- 知识文档细粒度授权（部门/角色/个人 + 读/编辑/删除）----
+            addColumnIfMissing("kb_document", "dept_id",
+                    "ALTER TABLE kb_document ADD COLUMN dept_id BIGINT COMMENT '文档归属部门' AFTER user_id");
+            addColumnIfMissing("kb_document", "visibility",
+                    "ALTER TABLE kb_document ADD COLUMN visibility VARCHAR(20) NOT NULL DEFAULT 'private' "
+                            + "COMMENT 'public/department/role/private'");
+            jdbcTemplate.update("UPDATE kb_document d JOIN sys_user u ON d.user_id = u.id "
+                    + "SET d.dept_id = u.dept_id WHERE d.dept_id IS NULL");
+            jdbcTemplate.update("UPDATE kb_document SET visibility = 'private' "
+                    + "WHERE visibility IS NULL OR visibility = ''");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS kb_document_permission ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                    + "document_id BIGINT NOT NULL COMMENT '文档ID',"
+                    + "subject_type VARCHAR(16) NOT NULL COMMENT 'ALL/USER/ROLE/DEPT',"
+                    + "subject_id BIGINT NOT NULL COMMENT '用户/角色/部门ID',"
+                    + "permission VARCHAR(16) NOT NULL COMMENT 'READ/EDIT/DELETE',"
+                    + "create_time DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                    + "UNIQUE KEY uk_kb_permission (document_id, subject_type, subject_id, permission),"
+                    + "INDEX idx_kb_permission_subject (subject_type, subject_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识文档细粒度授权'");
 
             log.info("SchemaMigrationRunner 迁移完成");
         } catch (Exception e) {
@@ -210,6 +245,16 @@ public class SchemaMigrationRunner implements ApplicationRunner {
                     userId, roleId);
         }
         log.info("种子用户已创建: {}（{}）", username, realName);
+    }
+
+    private void repairSeedUserName(String username, String realName) {
+        jdbcTemplate.update("UPDATE sys_user SET real_name = ? WHERE username = ?", realName, username);
+    }
+
+    private void setDifyKeyIfConfigured(long agentId, String apiKey) {
+        if (apiKey != null && !apiKey.isBlank()) {
+            jdbcTemplate.update("UPDATE agent_config SET dify_app_id = ? WHERE id = ?", apiKey.trim(), agentId);
+        }
     }
 
     private void addColumnIfMissing(String table, String column, String alterSql) {

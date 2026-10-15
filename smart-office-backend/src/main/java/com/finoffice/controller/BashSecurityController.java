@@ -10,11 +10,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
 
-/**
- * bash 安全管控接口：
- * POST /api/security/bash-exec → 校验 + 沙箱执行命令，返回真实输出
- */
+/** 平台安全运营中心接口：固定办公诊断任务和安全审计。 */
 @RestController
 @RequestMapping("/api/security")
 @RequiredArgsConstructor
@@ -22,15 +20,28 @@ public class BashSecurityController {
 
     private final BashSecurityService bashSecurityService;
 
-    @PostMapping("/bash-exec")
-    public R<Map<String, Object>> execBash(@RequestBody Map<String, String> body) {
-        String command = body.get("command");
-        if (command == null || command.isBlank()) {
-            throw new BizException("请输入命令");
+    @GetMapping("/presets")
+    public R<List<BashSecurityService.Preset>> presets() {
+        return R.ok(bashSecurityService.presets());
+    }
+
+    @GetMapping("/audit")
+    public R<List<Map<String, Object>>> audit(@RequestParam(defaultValue = "30") int limit) {
+        return R.ok(bashSecurityService.auditHistory(limit));
+    }
+
+    @PostMapping("/preset")
+    public R<Map<String, Object>> executePreset(@RequestBody Map<String, String> body) {
+        String presetId = body.get("preset_id");
+        if (presetId == null || presetId.isBlank()) {
+            throw new BizException("请选择安全诊断任务");
         }
         Long userId = StpUtil.getLoginIdAsLong();
-        ExecResult r = bashSecurityService.execute(command, userId);
+        ExecResult r = bashSecurityService.executePreset(presetId, userId);
+        return R.ok(toResponse(r));
+    }
 
+    private Map<String, Object> toResponse(ExecResult r) {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("allowed", r.allowed());
         resp.put("reason", r.reason());
@@ -40,6 +51,6 @@ public class BashSecurityController {
         resp.put("stderr", r.stderr());
         resp.put("exitCode", r.exitCode());
         resp.put("timedOut", r.timedOut());
-        return R.ok(resp);
+        return resp;
     }
 }

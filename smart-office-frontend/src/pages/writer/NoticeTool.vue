@@ -1,13 +1,18 @@
 <script setup>
-import { reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useWriter } from '../../composables/useWriter'
+import { sendWriterMessage } from '../../api/writer'
+import { getUserDepartments } from '../../api'
 
 const { result, loading, source, sourceLabels, generate, copyResult } = useWriter('notice')
+const departments = ref([])
+const sending = ref(false)
 
 const form = reactive({
   subject: '',
-  recipient: '',
+  targetType: 'all',
+  departmentId: null,
   points: ''
 })
 
@@ -16,8 +21,20 @@ function submit() {
     ElMessage.warning('请填写公告要点')
     return
   }
-  generate({ ...form })
+  const targetName = form.targetType === 'all' ? '全体人员' : (departments.value.find(d => d.id === form.departmentId)?.name || '指定部门')
+  generate({ subject: form.subject, recipient: targetName, points: form.points })
 }
+
+async function sendNotice() {
+  if (form.targetType === 'dept' && !form.departmentId) { ElMessage.warning('请选择接收部门'); return }
+  sending.value = true
+  try {
+    await sendWriterMessage({ type: 'notice', title: form.subject || '通知公告', content: result.value, all: form.targetType === 'all', departmentId: form.departmentId })
+    ElMessage.success('通知公告已发送')
+  } catch (e) { ElMessage.error(e.message || '通知公告发送失败') }
+  finally { sending.value = false }
+}
+onMounted(async () => { try { departments.value = await getUserDepartments() || [] } catch (e) {} })
 </script>
 
 <template>
@@ -34,8 +51,16 @@ function submit() {
           <el-form-item label="通知事由 / 标题（可选）">
             <el-input v-model="form.subject" placeholder="例如：开展全员信息安全培训" />
           </el-form-item>
-          <el-form-item label="主送对象（可选）">
-            <el-input v-model="form.recipient" placeholder="例如：各部门 / 全体员工" />
+          <el-form-item label="发送范围" required>
+            <el-radio-group v-model="form.targetType">
+              <el-radio label="all">全体人员</el-radio>
+              <el-radio label="dept">指定部门</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="form.targetType === 'dept'" label="接收部门" required>
+            <el-select v-model="form.departmentId" filterable placeholder="选择部门" style="width:100%">
+              <el-option v-for="dept in departments" :key="dept.id" :label="dept.name" :value="dept.id" />
+            </el-select>
           </el-form-item>
           <el-form-item label="公告要点" required>
             <el-input
@@ -59,6 +84,7 @@ function submit() {
             <el-tag v-if="source" size="small" effect="plain">{{ sourceLabels[source] || source }}</el-tag>
             <el-tag v-if="loading" size="small" type="info" effect="plain">流式生成中…</el-tag>
             <el-button size="small" :disabled="!result || loading" @click="copyResult">复制</el-button>
+            <el-button size="small" type="primary" :loading="sending" :disabled="!result || loading" @click="sendNotice">发送公告</el-button>
           </div>
         </div>
         <pre v-if="result" class="result-text">{{ result }}<span v-if="loading" class="caret"></span></pre>

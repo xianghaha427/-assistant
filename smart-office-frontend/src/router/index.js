@@ -14,6 +14,7 @@ const routes = [
     redirect: '/dashboard',
     children: [
       { path: 'dashboard', name: 'dashboard', component: () => import('../pages/Dashboard.vue'), meta: { title: '工作台', icon: 'Odometer' } },
+      { path: 'inbox', name: 'inbox', component: () => import('../pages/Inbox.vue'), meta: { title: '收信箱', icon: 'Inbox' } },
       // 协同办公
       { path: 'meeting', name: 'meeting', component: () => import('../pages/meeting/MeetingList.vue'), meta: { title: '会议中心', icon: 'Calendar' } },
       { path: 'meeting/create', name: 'meetingCreate', component: () => import('../pages/meeting/MeetingCreate.vue'), meta: { title: '新建会议' } },
@@ -34,7 +35,7 @@ const routes = [
       // 个人与系统
       { path: 'profile', name: 'profile', component: () => import('../pages/Profile.vue'), meta: { title: '个人中心' } },
       { path: 'system', name: 'system', component: () => import('../pages/Admin.vue'), meta: { title: '系统管理', icon: 'Setting', roles: ['ADMIN'] } },
-      { path: 'security', name: 'bashSecurity', component: () => import('../pages/system/BashSecurity.vue'), meta: { title: '命令安全管控', icon: 'Setting', roles: ['ADMIN'] } },
+      { path: 'security', name: 'bashSecurity', component: () => import('../pages/system/BashSecurity.vue'), meta: { title: '平台安全运营中心', icon: 'Setting', roles: ['ADMIN'] } },
       { path: 'admin', redirect: '/system' }
     ]
   },

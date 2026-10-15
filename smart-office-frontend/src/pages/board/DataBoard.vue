@@ -3,7 +3,7 @@
     <!-- ====== 页头 ====== -->
     <div class="board-header">
       <div>
-        <h2 class="page-title">数据<span class="grad-text">看板</span></h2>
+        <h2 class="page-title">数据看板</h2>
         <div class="page-subtitle">平台运营指标总览 · 数据按你的角色权限范围展示</div>
       </div>
       <el-button class="refresh-btn" circle @click="loadAll"><RefreshCw :size="16" /></el-button>
@@ -57,10 +57,10 @@ import { CanvasRenderer } from 'echarts/renderers'
 echarts.use([LineChart, PieChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 /* ====== 图表公共样式 ====== */
-const AXIS_COLOR = '#DCEBDD'
-const SPLIT_COLOR = '#E8F2E9'
-const TEXT_COLOR = '#6B7280'
-const PALETTE = ['#6FAF7B', '#4E9A5F', '#81C995', '#E8A840', '#E06060', '#A5D5AF']
+const AXIS_COLOR = 'rgba(0, 0, 0, 0.12)'
+const SPLIT_COLOR = 'rgba(0, 0, 0, 0.06)'
+const TEXT_COLOR = '#5F656D'
+const PALETTE = ['#0F5B3C', '#3C8565', '#B7791F', '#C53030', '#7B8794']
 const tooltipStyle = {
   backgroundColor: 'rgba(255, 255, 255, 0.96)',
   borderColor: '#DCEBDD',
@@ -80,11 +80,11 @@ let pieChart = null
 let barChart = null
 
 const statCards = computed(() => [
-  { label: '会议总数', value: overview.value.meeting_count ?? '-', icon: Calendar, color: '#6FAF7B' },
-  { label: '纪要生成数', value: overview.value.summary_count ?? '-', icon: FileText, color: '#6FAF7B' },
-  { label: 'AI 使用次数', value: overview.value.ai_usage_count ?? '-', icon: Sparkles, color: '#6FAF7B' },
-  { label: '任务完成率', value: overview.value.task_total ? (overview.value.task_completion_rate + '%') : '-', icon: CheckCircle2, color: '#6FAF7B' },
-  { label: '知识文档数', value: overview.value.kb_doc_count ?? '-', icon: Library, color: '#6FAF7B' }
+  { label: '会议总数', value: overview.value.meeting_count ?? '-', icon: Calendar, color: '#0F5B3C' },
+  { label: '纪要生成数', value: overview.value.summary_count ?? '-', icon: FileText, color: '#0F5B3C' },
+  { label: 'AI 使用次数', value: overview.value.ai_usage_count ?? '-', icon: Sparkles, color: '#0F5B3C' },
+  { label: '任务完成率', value: overview.value.task_total ? (overview.value.task_completion_rate + '%') : '-', icon: CheckCircle2, color: '#0F5B3C' },
+  { label: '知识文档数', value: overview.value.kb_doc_count ?? '-', icon: Library, color: '#0F5B3C' }
 ])
 
 const noTrend = computed(() =>
@@ -147,8 +147,8 @@ function renderTrend() {
         data: trend.value.ai_usage,
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(111, 175, 123, 0.25)' },
-            { offset: 1, color: 'rgba(111, 175, 123, 0)' }
+            { offset: 0, color: 'rgba(15, 91, 60, 0.18)' },
+            { offset: 1, color: 'rgba(15, 91, 60, 0)' }
           ])
         }
       },
@@ -170,7 +170,7 @@ function renderPie() {
   pieChart = echarts.init(pieRef.value)
   const ov = overview.value
   pieChart.setOption({
-    color: ['#E8A840', '#6FAF7B', '#81C995'],
+    color: ['#B7791F', '#0F5B3C', '#7BAF96'],
     tooltip: { trigger: 'item', ...tooltipStyle },
     legend: {
       bottom: 0,
@@ -218,10 +218,7 @@ function renderBar() {
       barWidth: 22,
       itemStyle: {
         borderRadius: [6, 6, 0, 0],
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#6FAF7B' },
-          { offset: 1, color: 'rgba(111, 175, 123, 0.35)' }
-        ])
+        color: '#0F5B3C'
       },
       data: [
         ov.meeting_count || 0,
@@ -279,14 +276,13 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 13px;
   padding: 16px 18px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px solid var(--border-light);
-  backdrop-filter: blur(18px);
-  transition: transform 0.18s ease, border-color 0.18s ease;
+  transition: background .18s ease, border-color .18s ease;
 }
 .stat-card:hover {
-  transform: translateY(-2px);
+  background: var(--accent-tint);
   border-color: var(--accent-light);
 }
 .stat-icon {
@@ -318,10 +314,9 @@ onBeforeUnmount(() => {
 .chart-card {
   position: relative;
   padding: 16px 18px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px solid var(--border-light);
-  backdrop-filter: blur(18px);
 }
 .chart-card.wide {
   grid-column: 1 / -1;

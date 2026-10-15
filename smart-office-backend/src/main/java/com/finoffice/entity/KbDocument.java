@@ -14,11 +14,14 @@ public class KbDocument {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
+    private Long deptId;
     private String name;
     private String fileType;
     private String fileUrl;
     private String content;
     private String category;
+    /** public / department / role / private */
+    private String visibility;
     private String difyDocumentId;
     private String status;
     private Integer wordCount;

@@ -88,8 +88,6 @@ CREATE TABLE IF NOT EXISTS agent_config (
     input_variable VARCHAR(32) DEFAULT NULL COMMENT 'workflow应用输入变量名',
     system_prompt  TEXT,
     tools_json     TEXT,
-    engine         VARCHAR(16) NOT NULL DEFAULT 'dify' COMMENT '知识问答引擎通道:native自研/dify云端',
-    model_channel  VARCHAR(16) NOT NULL DEFAULT 'local' COMMENT '模型通道:local本地Ollama安全通道',
     enabled        TINYINT DEFAULT 1,
     create_time    DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -128,12 +126,12 @@ INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES
 (4, 3), (5, 3), (6, 3), (7, 2), (8, 2);
 
 -- 智能体种子数据（dify_app_id 密钥只存数据库，不写入本文件）
-INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, input_variable, system_prompt, tools_json, engine, model_channel, enabled) VALUES
-(1, '企业知识问答助手', '解答公司制度、流程规范、业务操作等企业知识问题，支持知识检索与智能兜底', 'chat', '', 'chat', NULL, NULL, NULL, 'dify', 'local', 1),
-(2, '会议纪要助手', '粘贴会议转写文本，自动生成结构化纪要、决议与待办拆解（含责任人/截止时间）', 'document', '', 'chat', 'meeting_text', NULL, NULL, 'dify', 'local', 1),
-(3, '行业洞察助手', '金融行业动态分析、政策解读与市场趋势洞察，支持图表可视化', 'trend', '', 'chat', NULL, NULL, NULL, 'dify', 'local', 1),
-(4, 'PPT大纲生成助手', '输入主题一键生成结构化PPT内容（大纲/每页要点/演讲备注/布局建议）', 'ppt', 'app-REVOKED', 'workflow', 'topic', NULL, NULL, 'dify', 'local', 1),
-(5, '办公写作助手', '公文、汇报、邮件、总结等办公文案的智能撰写与润色', 'document', '', 'chat', NULL, NULL, NULL, 'dify', 'local', 1);
+INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, input_variable, system_prompt, tools_json, enabled) VALUES
+(1, '企业知识问答助手', '解答公司制度、流程规范、业务操作等企业知识问题，支持知识检索与智能兜底', 'chat', '', 'chat', NULL, NULL, NULL, 1),
+(2, '会议纪要助手', '粘贴会议转写文本，自动生成结构化纪要、决议与待办拆解（含责任人/截止时间）', 'document', '', 'chat', 'meeting_text', NULL, NULL, 1),
+(3, '行业洞察助手', '金融行业动态分析、政策解读与市场趋势洞察，支持图表可视化', 'trend', '', 'chat', NULL, NULL, NULL, 1),
+(4, 'PPT大纲生成助手', '输入主题一键生成结构化PPT内容（大纲/每页要点/演讲备注/布局建议）', 'ppt', '', 'workflow', 'topic', NULL, NULL, 1),
+(5, '办公写作助手', '公文、汇报、邮件、总结等办公文案的智能撰写与润色', 'document', '', 'chat', NULL, NULL, NULL, 1);
 -- ============================ 智能会议模块 ============================
 
 CREATE TABLE IF NOT EXISTS meeting_record (
@@ -172,11 +170,13 @@ CREATE TABLE IF NOT EXISTS meeting_action_item (
 CREATE TABLE IF NOT EXISTS kb_document (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL COMMENT '上传人',
+  dept_id BIGINT COMMENT '归属部门',
   name VARCHAR(200) NOT NULL COMMENT '文档名称',
   file_type VARCHAR(20) NOT NULL DEFAULT 'text' COMMENT '文件类型: text/pdf/docx',
   file_url VARCHAR(500) COMMENT '文件存储路径',
   content MEDIUMTEXT COMMENT '文档文本内容',
   category VARCHAR(64) DEFAULT '未分类' COMMENT '文档分类',
+  visibility VARCHAR(20) NOT NULL DEFAULT 'private' COMMENT '历史兼容字段，实际访问控制由 kb_document_permission 决定',
   dify_document_id VARCHAR(100) COMMENT 'Dify 中的文档ID',
   status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/indexing/completed/failed/local_only',
   word_count INT DEFAULT 0 COMMENT '字数',
@@ -184,7 +184,30 @@ CREATE TABLE IF NOT EXISTS kb_document (
   INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库文档';
 
+CREATE TABLE IF NOT EXISTS kb_document_permission (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  document_id BIGINT NOT NULL COMMENT '文档ID',
+  subject_type VARCHAR(16) NOT NULL COMMENT 'ALL/USER/ROLE/DEPT',
+  subject_id BIGINT NOT NULL COMMENT '用户/角色/部门ID',
+  permission VARCHAR(16) NOT NULL COMMENT 'READ/EDIT/DELETE',
+  create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_kb_permission (document_id, subject_type, subject_id, permission),
+  INDEX idx_kb_permission_subject (subject_type, subject_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识文档细粒度授权';
+
 -- ============================ 任务模块 ============================
+
+CREATE TABLE IF NOT EXISTS inbox_message (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  recipient_user_id BIGINT NOT NULL COMMENT '收件人',
+  sender_user_id BIGINT NOT NULL COMMENT '发件人',
+  source_type VARCHAR(32) NOT NULL COMMENT 'writer_weekly/writer_email/writer_notice',
+  title VARCHAR(200) NOT NULL,
+  content MEDIUMTEXT NOT NULL,
+  is_read TINYINT NOT NULL DEFAULT 0,
+  create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_inbox_recipient (recipient_user_id, is_read, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='业务收件箱';
 
 CREATE TABLE IF NOT EXISTS task (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -88,6 +88,21 @@
         <el-link :underline="false" @click="$router.push('/briefing')">去生成</el-link>
       </div>
     </div>
+
+    <div class="card panel inbox-panel">
+      <div class="panel-head">
+        <span class="panel-title">收信箱 <el-badge v-if="inboxUnreadCount" :value="inboxUnreadCount" :max="99" /></span>
+        <el-link :underline="false" @click="$router.push('/inbox')">查看全部</el-link>
+      </div>
+      <template v-if="inboxMessages.length">
+        <div v-for="message in inboxMessages" :key="'inbox-'+message.id" class="inbox-row" @click="$router.push('/inbox')">
+          <div class="inbox-row-title"><span>{{ message.title }}</span><el-tag size="small" effect="plain">{{ inboxSourceLabel(message.source_type) }}</el-tag></div>
+          <div class="inbox-row-preview">{{ message.content }}</div>
+          <div class="inbox-row-time">{{ message.create_time }}</div>
+        </div>
+      </template>
+      <div v-else class="empty-state" style="padding:14px 0 4px"><span style="font-size:13px;color:var(--text-tertiary)">暂无收件内容</span><el-link :underline="false" @click="$router.push('/inbox')">进入收信箱</el-link></div>
+    </div>
   </div>
 </template>
 
@@ -102,6 +117,8 @@ const user = ref({})
 const todayMeetings = ref([])
 const myTodos = ref([])
 const todayBriefing = ref(null)
+const inboxMessages = ref([])
+const inboxUnreadCount = ref(0)
 const stats = ref({})
 
 const userName = computed(() => user.value.real_name || user.value.realName || '同事')
@@ -125,6 +142,7 @@ const statCards = computed(() => [
 function fmtTime(t) { if (!t) return '--:--'; const m = String(t).match(/(\d{2}:\d{2})/); return m ? m[1] : t }
 function statusText(s) { return { pending: '待开始', processing: '进行中', completed: '已完成' }[s] || s || '未知' }
 function priorityLabel(p) { return { high: '高', medium: '中', low: '低' }[p] || p }
+function inboxSourceLabel(type) { return { writer_weekly: '智能周报', writer_email: '邮件助手', writer_notice: '通知公告' }[type] || '业务消息' }
 onMounted(async () => {
   const [userRes, homeRes] = await Promise.allSettled([getMe(), getWorkbenchHome()])
   if (userRes.status === 'fulfilled' && userRes.value) user.value = userRes.value
@@ -132,39 +150,43 @@ onMounted(async () => {
     const d = homeRes.value; todayMeetings.value = Array.isArray(d.today_meetings) ? d.today_meetings : []
     myTodos.value = Array.isArray(d.my_todos) ? d.my_todos.slice(0, 5) : []
     todayBriefing.value = d.today_briefing || null; stats.value = d.stats || {}
+    inboxMessages.value = Array.isArray(d.inbox_messages) ? d.inbox_messages : []
+    inboxUnreadCount.value = d.inbox_unread_count || 0
   }
   loading.value = false
 })
 </script>
 
 <style scoped>
-.dashboard { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px; }
-.hero { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 8px; }
-.hero-title { margin: 0; font-size: 32px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+.dashboard { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.hero { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 24px 28px; overflow: hidden; border: 1px solid #CFE4D5; border-radius: var(--radius-lg); background: #F0F8F2; }
+.hero::after { content: ""; position: absolute; right: -58px; top: -100px; width: 250px; height: 250px; border: 1px solid rgba(15, 91, 60, .12); border-radius: 50%; box-shadow: 0 0 0 24px rgba(15, 91, 60, .035), 0 0 0 48px rgba(15, 91, 60, .02); pointer-events: none; }
+.hero-main, .hero-date { position: relative; z-index: 1; }
+.hero-title { margin: 0; font-size: 28px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.03em; }
 .hero-name { color: var(--accent); }
 .hero-sub { margin: 6px 0 0; font-size: 14px; color: var(--text-secondary); }
 .hero-date { text-align: right; }
 .date-day { font-size: 32px; font-weight: 700; line-height: 1; color: var(--text-primary); }
 .date-sub { margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-.stat-card { display: flex; align-items: center; gap: 14px; padding: 22px 24px; background: var(--surface); border: 1px solid transparent; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s ease; box-shadow: var(--shadow-sm); }
-.stat-card:hover { border-color: var(--border); box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.stat-icon { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat-card { display: flex; align-items: center; gap: 14px; padding: 17px 18px; background: var(--surface); border: 1px solid var(--border-light); border-radius: var(--radius-md); cursor: pointer; transition: border-color .18s, background .18s; }
+.stat-card:hover { border-color: var(--accent-light); background: var(--accent-tint); }
+.stat-icon { width: 38px; height: 38px; flex-shrink: 0; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .stat-num { font-size: 24px; font-weight: 700; line-height: 1.15; color: var(--text-primary); font-family: "Geist", "JetBrains Mono", "Noto Sans SC", monospace; font-variant-numeric: tabular-nums; }
 .stat-label { font-size: 13px; color: var(--text-tertiary); margin-top: 3px; font-weight: 500; }
 .stat-arrow { margin-left: auto; color: var(--text-tertiary); opacity: 0; transition: all 0.2s ease; }
 .stat-card:hover .stat-arrow { opacity: 1; color: var(--accent); }
 .mid-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.panel { padding: 24px; }
+.panel { padding: 20px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .panel-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
-.meeting-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 8px; cursor: pointer; transition: background 0.18s ease; }
+.meeting-row { display: flex; align-items: center; gap: 14px; padding: 12px 10px; border-top: 1px solid var(--border-light); cursor: pointer; transition: background 0.18s ease; }
 .meeting-row:hover { background: var(--surface-hover); }
 .meeting-time { flex-shrink: 0; width: 50px; font-size: 14px; font-weight: 600; color: var(--accent); }
 .meeting-info { min-width: 0; flex: 1; }
 .meeting-title { font-size: 14px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .meeting-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-tertiary); margin-top: 3px; }
-.todo-row { padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: background 0.12s; }
+.todo-row { padding: 11px 10px; border-top: 1px solid var(--border-light); cursor: pointer; transition: background 0.12s; }
 .todo-row:hover { background: var(--surface-hover); }
 .todo-info { min-width: 0; }
 .todo-content { font-size: 14px; color: var(--text-primary); line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -178,6 +200,12 @@ onMounted(async () => {
 .briefing-text :deep(th),.briefing-text :deep(td) { border: 1px solid var(--border); padding: 5px 9px; text-align: left; }
 .briefing-text :deep(th) { background: var(--surface-hover); font-weight: 600; }
 .briefing-link { margin-top: 8px; font-size: 13px; }
+.inbox-panel { padding: 20px; }
+.inbox-row { padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+.inbox-row:hover { background: var(--surface-hover); }
+.inbox-row-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.inbox-row-preview { margin-top: 4px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inbox-row-time { margin-top: 3px; color: var(--text-tertiary); font-size: 11px; }
 /* 骨架屏 */
 .skeleton-panel { padding: 12px 0; display: flex; flex-direction: column; gap: 10px; }
 .sk-line { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-hover) 25%, var(--border-light) 50%, var(--surface-hover) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }

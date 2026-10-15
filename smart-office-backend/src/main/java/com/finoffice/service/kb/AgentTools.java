@@ -5,7 +5,6 @@ import com.finoffice.entity.Task;
 import com.finoffice.mapper.MeetingActionItemMapper;
 import com.finoffice.mapper.TaskMapper;
 import com.finoffice.mapper.SysUserMapper;
-import com.finoffice.service.kb.RagRetrievalService;
 import com.finoffice.service.BashSecurityService;
 import com.finoffice.service.BashSecurityService.ExecResult;
 import dev.langchain4j.agent.tool.Tool;
@@ -36,11 +35,20 @@ import java.time.format.DateTimeFormatter;
 @RequiredArgsConstructor
 public class AgentTools {
 
+    private final ThreadLocal<Long> currentUserId = new ThreadLocal<>();
+
     private final TaskMapper taskMapper;
     private final MeetingActionItemMapper actionItemMapper;
     private final SysUserMapper userMapper;
-    private final RagRetrievalService ragRetrievalService;
     private final BashSecurityService bashSecurityService;
+
+    public void setCurrentUserId(Long userId) {
+        currentUserId.set(userId);
+    }
+
+    public void clearCurrentUserId() {
+        currentUserId.remove();
+    }
 
     /** 时间格式化器（ISO_LOCAL_DATE + 可选时间） */
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -128,46 +136,30 @@ public class AgentTools {
         }
     }
 
-    // ---- bash 命令执行（沙箱安全管控） ----
+    // ---- 办公运维诊断（沙箱安全管控） ----
 
-    @Tool("在安全沙箱中执行系统命令。参数：command=要执行的命令（如\"ls -la\" \"echo hello\"）。"
-            + "仅白名单命令可执行（ls/cat/echo/date/pwd/wc/grep/find/df/du/ps等），"
-            + "危险命令会被拦截（rm/mv/sudo/curl等）。返回命令输出结果。")
-    public String executeBash(@dev.langchain4j.agent.tool.P("command") String command) {
-        if (command == null || command.isBlank()) {
-            return "命令为空，请输入要执行的命令。";
+    @Tool("执行一个只读的办公环境诊断任务，帮助排查知识库、会议附件和服务运行状态。"
+            + "diagnosticId 只能是 knowledge-files（知识库文件清单）、knowledge-size（知识库占用空间）、"
+            + "upload-size（上传文件占用）、disk-space（运行环境磁盘）、process-status（应用进程状态）。"
+            + "不要自行拼接 Shell 命令，也不能执行修改文件、联网或系统管理操作。")
+    public String diagnoseOfficeEnvironment(
+            @dev.langchain4j.agent.tool.P("diagnosticId") String diagnosticId) {
+        if (diagnosticId == null || diagnosticId.isBlank()) {
+            return "诊断任务为空，请从允许的办公诊断任务中选择。";
         }
         try {
-            ExecResult r = bashSecurityService.execute(command, 1L); // userId=1 系统代理
+            Long userId = currentUserId.get() != null ? currentUserId.get() : 1L;
+            ExecResult r = bashSecurityService.executePreset(diagnosticId.trim(), userId);
             if (!r.allowed()) {
-                return String.format("命令被拦截：%s（风险等级：%s）", r.reason(), r.riskLevel());
+                return String.format("诊断任务被安全策略拦截：%s（风险等级：%s）", r.reason(), r.riskLevel());
             }
-            StringBuilder sb = new StringBuilder();
-            sb.append("命令：").append(r.command()).append("\n");
-            sb.append("退出码：").append(r.exitCode()).append("\n");
-            if (r.timedOut()) sb.append("⚠ 执行超时（").append(5).append("秒）\n");
-            if (!r.stdout().isEmpty()) sb.append("--- 标准输出 ---\n").append(r.stdout()).append("\n");
-            if (!r.stderr().isEmpty()) sb.append("--- 标准错误 ---\n").append(r.stderr());
-            return sb.toString();
+            return String.format("诊断任务 %s 完成（退出码=%d）：\n%s%s",
+                    diagnosticId, r.exitCode(), r.stdout(),
+                    r.stderr().isBlank() ? "" : "\n错误输出：" + r.stderr());
         } catch (Exception e) {
-            return "命令执行失败: " + e.getMessage();
+            log.error("Agent 办公诊断失败: {}", e.getMessage());
+            return "办公诊断失败: " + e.getMessage();
         }
     }
 
-    // ---- 知识检索 ----
-
-    @Tool("在企业知识库中搜索相关文档内容。参数：query=搜索查询关键词。返回相关文档片段。")
-    public String searchKnowledge(
-            @dev.langchain4j.agent.tool.P("query") String query) {
-        try {
-            var ctx = ragRetrievalService.search(query);
-            if (ctx == null || ctx.context() == null || ctx.context().isBlank()) {
-                return "知识库中未找到与「" + query + "」相关的内容。";
-            }
-            return ctx.context();
-        } catch (Exception e) {
-            log.error("Agent 知识检索失败: {}", e.getMessage());
-            return "知识检索失败: " + e.getMessage();
-        }
-    }
 }

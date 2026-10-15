@@ -5,7 +5,7 @@
       <button class="back-btn" @click="$router.back()">
         ← 返回
       </button>
-      <h2 class="page-title">新建<span class="grad-text">会议</span></h2>
+      <h2 class="page-title">新建会议</h2>
       <p class="page-subtitle">粘贴转写文本或上传纪要文档，AI 将自动提取议题、决议与待办</p>
     </div>
 
@@ -91,7 +91,7 @@
               <div class="upload-inner">
                 <div class="upload-icon">📄</div>
                 <div class="upload-title">拖拽会议纪要文档到此处，或 <em>点击上传</em></div>
-                <div class="upload-hint">支持 PDF / MD / DOCX / TXT，可多文件；不输入文字时将基于文档摘要</div>
+                <div class="upload-hint">支持 PDF / MD / DOCX / TXT，系统会先提取文字并填入文本输入框</div>
               </div>
             </el-upload>
             <div v-if="docFiles.length" class="doc-list">
@@ -139,8 +139,8 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { createMeeting, generateSummary, uploadFile } from '../../api/meeting.js'
-import { transcribeAudio } from '../../api/index.js'
+import { createMeeting, generateSummary } from '../../api/meeting.js'
+import { transcribeAudio, extractMeetingFile } from '../../api/index.js'
 
 const router = useRouter()
 
@@ -153,22 +153,39 @@ const activeTab = ref('text')
 const docFiles = ref([])
 const audioFile = ref(null)
 const transcribing = ref(false)
+const extractingDocument = ref(false)
 const submitting = ref(false)
 const generating = ref(false)
 
 const canSubmit = computed(() => {
   if (!form.value.title.trim()) return false
-  // 有文字即可；无文字时须至少上传一份纪要文档
-  return form.value.raw_text.trim().length > 0 || docFiles.value.length > 0
+  return !extractingDocument.value && form.value.raw_text.trim().length > 0
 })
 
-function handleFileChange(file) {
+async function handleFileChange(file) {
   if (!file?.raw) return
   if (docFiles.value.some(f => f.name === file.raw.name)) {
     ElMessage.warning('该文件已添加')
     return
   }
   docFiles.value.push(file.raw)
+  extractingDocument.value = true
+  try {
+    const result = await extractMeetingFile(file.raw)
+    const extracted = result?.text?.trim()
+    if (!extracted) {
+      ElMessage.warning(`文档 ${file.raw.name} 未识别出文字`)
+      return
+    }
+    const prefix = form.value.raw_text.trim() ? `\n\n===== ${file.raw.name} =====\n\n` : ''
+    form.value.raw_text = form.value.raw_text.trim() + prefix + extracted
+    activeTab.value = 'text'
+    ElMessage.success(`已识别 ${file.raw.name}，共 ${extracted.length} 字并填入文本框`)
+  } catch (e) {
+    ElMessage.error(`文档 ${file.raw.name} 解析失败，请检查文件内容`)
+  } finally {
+    extractingDocument.value = false
+  }
 }
 
 function removeDocFile(i) {
@@ -221,28 +238,10 @@ async function handleSubmit() {
   submitting.value = true
 
   try {
-    // 纪要文档直传 Dify（创建会议前先取得 dify_file_id）
-    const fileIds = []
-    if (docFiles.value.length) {
-      generating.value = true
-      for (const f of docFiles.value) {
-        try {
-          const up = await uploadFile(f)
-          if (up?.dify_file_id) fileIds.push(up.dify_file_id)
-        } catch (e) {
-          // 后端已对瞬时网络抖动（Connection reset 等）自动重试一次，此处为最终失败提示
-          ElMessage.error('文档 ' + f.name + ' 上传失败，请重试')
-          return
-        }
-      }
-      docFiles.value = [] // 上传成功后清理本地临时文件列表
-    }
-
     const payload = {
       title: form.value.title.trim(),
-      source_type: fileIds.length && !form.value.raw_text.trim() ? 'file' : 'text',
-      raw_text: form.value.raw_text,
-      file_ids: fileIds
+      source_type: 'text',
+      raw_text: form.value.raw_text
     }
 
     // 创建会议
@@ -251,7 +250,7 @@ async function handleSubmit() {
 
     // 触发 AI 生成纪要（仅文件无文字时后端自动以「摘要」为 query）
     try {
-      await generateSummary(meeting.id, fileIds)
+      await generateSummary(meeting.id)
       // 纪要为异步生成：不提前报"成功"，进度由详情页轮询展示
       ElMessage.info('纪要正在生成，请到会议详情查看进度')
       router.push(`/meeting/${meeting.id}`)
@@ -350,7 +349,7 @@ async function handleSubmit() {
   margin-top: 12px;
   padding: 10px 14px;
   background: var(--accent-soft);
-  border: 1px solid rgba(8, 180, 188, 0.2);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   font-size: 13px;
 }

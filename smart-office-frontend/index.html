@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
-      /* ===== Taste-Skill v2 设计系统 ===== */
       @import url('https://fonts.loli.net/css2?family=Geist:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
       /* 1. 字体：Geist(Latin) + Noto Sans SC(中文) */
@@ -12,36 +11,7 @@
       /* 统计数字等宽 */
       .stat-num, .hero-stat-num, .stat-value, .date-day, [class*="stat-num"], [class*="date-day"] { font-family: "Geist", "JetBrains Mono", monospace !important; font-variant-numeric: tabular-nums !important; }
 
-      /* 2. Element Plus 主色 → 自然绿 */
-      :root { --el-color-primary: #6FAF7B !important; }
-
-      /* 3. 卡片：绿色调微阴影 */
-      .card, .el-card, [class$="-card"], [class*="panel"] { box-shadow: 0 1px 4px rgba(81,146,89,0.08) !important; }
-
-      /* 4. 可点击卡片 hover：上浮 + 阴影加深 */
-      .stat-card, .meeting-card, [class*="clickable"] { transition: all 0.2s ease !important; }
-      .stat-card:hover, .meeting-card:hover, [class*="clickable"]:hover { transform: translateY(-2px) !important; box-shadow: 0 4px 16px rgba(81,146,89,0.14) !important; }
-
-      /* 5. 留白：内容区 padding 加大 */
-      .el-main, .main-content { padding: 32px 36px !important; }
-
-      /* 6. 字体层级：标题加粗加大 */
-      .page-title, .hero-title, h1[class*="title"] { font-size: 28px !important; font-weight: 700 !important; letter-spacing: -0.02em !important; }
-      .panel-title, [class*="panel-title"], .section-title { font-size: 16px !important; font-weight: 600 !important; }
-
-      /* 7. 间距：section 间 gap 增大 */
-      .dashboard, [class*="dashboard"] { gap: 32px !important; }
-      .mid-row, [class*="mid-row"] { gap: 24px !important; }
-      .stat-grid, [class*="stat-grid"] { gap: 20px !important; }
-
-      /* 8. Smooth Scroll：全局平滑滚动 */
-      html { scroll-behavior: smooth !important; }
-
-      /* 9. 页面切换淡入 */
-      .el-main > * { animation: page-in 0.2s ease-out both; }
-      @keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-
-      /* 10. 输入框聚焦：与 Element Plus 原生样式不冲突 */
+      html { scroll-behavior: smooth; }
       input:focus-visible, textarea:focus-visible { outline: none; }
     </style>
     <title>恒生智能办公助手</title>

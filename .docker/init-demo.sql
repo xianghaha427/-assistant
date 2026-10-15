@@ -22,12 +22,12 @@ INSERT IGNORE INTO sys_user (id, username, password, real_name, dept_id, status,
 INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES
 (1,1),(2,3),(3,2),(4,3),(6,3),(7,2);
 
-INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, engine, model_channel, enabled) VALUES
-(1, '企业知识问答助手', '企业制度智能问答，自研RAG+本地向量检索', 'chat', '', 'chat', 'dify', 'deepseek', 1),
-(2, '会议纪要助手', 'AI生成结构化会议纪要', 'document', '', 'chat', 'dify', 'deepseek', 1),
-(3, '行业洞察助手', '金融行业动态分析', 'trend', '', 'chat', 'dify', 'deepseek', 1),
-(4, 'PPT大纲生成助手', '一键生成PPT大纲', 'ppt', '', 'workflow', 'dify', 'deepseek', 1),
-(5, '办公写作助手', '周报/邮件/通知撰写', 'document', '', 'chat', 'dify', 'deepseek', 1);
+INSERT IGNORE INTO agent_config (id, name, description, icon, dify_app_id, dify_mode, enabled) VALUES
+(1, '企业知识问答助手', '企业制度智能问答', 'chat', '', 'chat', 1),
+(2, '会议纪要助手', 'AI生成结构化会议纪要', 'document', '', 'chat', 1),
+(3, '行业洞察助手', '金融行业动态分析', 'trend', '', 'chat', 1),
+(4, 'PPT大纲生成助手', '一键生成PPT大纲', 'ppt', '', 'workflow', 1),
+(5, '办公写作助手', '周报/邮件/通知撰写', 'document', '', 'chat', 1);
 
 -- 演示会议
 INSERT IGNORE INTO meeting_record (id, user_id, title, meeting_time, source_type, raw_text, summary, status, create_time) VALUES

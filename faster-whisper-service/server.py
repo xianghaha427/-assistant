@@ -20,13 +20,22 @@ PORT = int(os.getenv("WHISPER_PORT", "8766"))
 model = None
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+def load_model():
     global model
     from faster_whisper import WhisperModel
-    print(f"正在加载 Faster-Whisper 模型 {MODEL_SIZE}（{DEVICE}/{COMPUTE_TYPE}）...")
+    print(f"正在加载 Faster-Whisper 模型 {MODEL_SIZE}（{DEVICE}/{COMPUTE_TYPE}）...", flush=True)
     model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-    print(f"模型加载完成，服务就绪 — 端口 {PORT}")
+    print(f"模型加载完成，服务就绪 — 端口 {PORT}", flush=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        load_model()
+    except Exception as exc:
+        # 模型下载失败不阻断容器启动，后续请求会再次尝试加载。
+        model = None
+        print(f"模型暂未加载：{exc}", flush=True)
     yield
 
 
@@ -42,14 +51,17 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": MODEL_SIZE, "device": DEVICE}
+    return {"status": "ok", "model": MODEL_SIZE, "device": DEVICE, "model_loaded": model is not None}
 
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     """接收音频文件（mp3/wav/m4a/ogg），返回转写文本。"""
     if model is None:
-        raise HTTPException(status_code=503, detail="模型尚未加载完成")
+        try:
+            load_model()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"语音模型尚未准备好，请检查网络后重试: {exc}")
 
     # 保存临时文件
     suffix = os.path.splitext(file.filename or "audio.wav")[1] or ".wav"
